@@ -377,3 +377,26 @@ Gates: `flutter analyze` clean, `flutter test` 53 passed.
   app's keypair lives in secure storage and survives an update
   install. ONLY an uninstall + reinstall generates a new keypair —
   that is the one case where the VPS line would need replacing.
+
+### Delivery (v0.2.1, verified 2026-11-16)
+- Gates: `flutter analyze` clean; `flutter test` **53 passed**
+  (incl. the October AYA case, renewal/format/group/name-correction
+  tests, and the 360px no-overflow test).
+- APK: `MistyRoute_Manager-v0.2.1.apk`, 58,799,570 bytes,
+  versionCode 3 / versionName 0.2.1, package
+  `com.ngy.mistyroutemanager`, label "MistyRoute Manager",
+  md5 `ac98b441751284761063d9951063d65f`, apksigner verified
+  (v2 scheme), signer SHA-1
+  `2A:F2:AC:97:7F:A8:9D:3C:01:9F:A7:61:BB:63:B4:4D:55:CF:CC:C6`
+  — same keystore as v0.2.0, so an update install keeps the
+  existing VPS SSH key working. Build took 394.5s.
+- Drive: same AppDev folder as v0.2.0, file id
+  `1a0OXqkN_124sLAB_4UkcHuMli6EjEoBD`, read back from Drive:
+  name/size/md5 all match local.
+- Web demo: https://ngy-reading-room.github.io/mistyroute-manager/
+  (gh-pages commit `553fd15`, source commit `b856917`), served
+  `main.dart.js` md5 `8b6bcddf0dd52d9c3d4b206f84fc530c` — identical
+  to the local build, index HTTP 200. No Netlify credits used.
+- NOT yet done: live-browser render check of the web demo
+  (subagent has no live browser — parent to arrange) and NayGyi's
+  phone test of the APK.
