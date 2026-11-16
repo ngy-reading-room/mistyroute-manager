@@ -13,6 +13,7 @@ class PanelSettings {
     this.panelUrl = '',
     this.apiToken = '',
     this.useDemoData = true,
+    this.sheetsSpreadsheetId = '',
   });
 
   final String panelUrl;
@@ -23,6 +24,10 @@ class PanelSettings {
   /// is switched off.
   final bool useDemoData;
 
+  /// Google Sheets spreadsheet ID (or full sheet URL) for the
+  /// panel -> `vlesslist` sync. Empty = not configured.
+  final String sheetsSpreadsheetId;
+
   bool get hasLiveCredentials =>
       panelUrl.trim().isNotEmpty && apiToken.trim().isNotEmpty;
 
@@ -30,11 +35,13 @@ class PanelSettings {
     String? panelUrl,
     String? apiToken,
     bool? useDemoData,
+    String? sheetsSpreadsheetId,
   }) =>
       PanelSettings(
         panelUrl: panelUrl ?? this.panelUrl,
         apiToken: apiToken ?? this.apiToken,
         useDemoData: useDemoData ?? this.useDemoData,
+        sheetsSpreadsheetId: sheetsSpreadsheetId ?? this.sheetsSpreadsheetId,
       );
 }
 
@@ -42,6 +49,7 @@ class SettingsService {
   static const _kPanelUrl = 'mistyroute_panel_url';
   static const _kApiToken = 'mistyroute_api_token';
   static const _kUseDemo = 'mistyroute_use_demo_data';
+  static const _kSheetsId = 'mistyroute_sheets_spreadsheet_id';
 
   Future<PanelSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -49,6 +57,7 @@ class SettingsService {
       panelUrl: prefs.getString(_kPanelUrl) ?? '',
       apiToken: prefs.getString(_kApiToken) ?? '',
       useDemoData: prefs.getBool(_kUseDemo) ?? true,
+      sheetsSpreadsheetId: prefs.getString(_kSheetsId) ?? '',
     );
   }
 
@@ -57,6 +66,7 @@ class SettingsService {
     await prefs.setString(_kPanelUrl, settings.panelUrl);
     await prefs.setString(_kApiToken, settings.apiToken);
     await prefs.setBool(_kUseDemo, settings.useDemoData);
+    await prefs.setString(_kSheetsId, settings.sheetsSpreadsheetId);
   }
 
   Future<void> clearCredentials() async {

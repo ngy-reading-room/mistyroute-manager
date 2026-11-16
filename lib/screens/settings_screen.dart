@@ -1,5 +1,5 @@
 /// Settings: panel URL + API token (on-device only), demo-data toggle,
-/// and a connection test.
+/// Google Sheets sync, and a connection test.
 ///
 /// SECURITY: the URL and token are stored only in this browser's local
 /// storage (SharedPreferences on web) / the app's private storage on
@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../services/panel_provider.dart';
+import '../services/sheets_sync_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({required this.provider, super.key});
@@ -23,11 +24,21 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _urlController;
   late final TextEditingController _tokenController;
+  late final TextEditingController _sheetsIdController;
   bool _obscureToken = true;
   bool _saving = false;
   bool _testing = false;
   String? _message;
   bool _messageIsError = false;
+
+  final _sheets = SheetsSyncService();
+  final _googleSignInService = GoogleSignInService();
+  String? _googleAccessToken;
+  bool _signingIn = false;
+  bool _syncing = false;
+  String? _sheetsMessage;
+  bool _sheetsMessageIsError = false;
+  String? _sheetsSetupSteps;
 
   @override
   void initState() {
@@ -36,12 +47,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         TextEditingController(text: widget.provider.settings.panelUrl);
     _tokenController =
         TextEditingController(text: widget.provider.settings.apiToken);
+    _sheetsIdController = TextEditingController(
+      text: widget.provider.settings.sheetsSpreadsheetId,
+    );
   }
 
   @override
   void dispose() {
     _urlController.dispose();
     _tokenController.dispose();
+    _sheetsIdController.dispose();
     super.dispose();
   }
 
@@ -53,6 +68,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final next = widget.provider.settings.copyWith(
       panelUrl: _urlController.text.trim(),
       apiToken: _tokenController.text.trim(),
+      sheetsSpreadsheetId: _sheetsIdController.text.trim(),
     );
     await widget.provider.saveSettings(next);
     if (!mounted) return;
@@ -92,6 +108,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _tokenController.clear();
       _message = 'Panel URL and token cleared from this device.';
       _messageIsError = false;
+    });
+  }
+
+  Future<void> _googleSignIn() async {
+    setState(() {
+      _signingIn = true;
+      _sheetsMessage = null;
+      _sheetsSetupSteps = null;
+    });
+    try {
+      final token = await _googleSignInService.signInAndGetAccessToken();
+      if (!mounted) return;
+      setState(() {
+        _signingIn = false;
+        _googleAccessToken = token;
+        _sheetsMessage = 'Signed in to Google. Ready to sync.';
+        _sheetsMessageIsError = false;
+      });
+    } on SheetsSetupNeeded catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _signingIn = false;
+        _sheetsMessage = 'Google sign-in is not set up yet.';
+        _sheetsMessageIsError = true;
+        _sheetsSetupSteps = e.steps;
+      });
+    }
+  }
+
+  Future<void> _syncSheets() async {
+    final clients = widget.provider.data?.clients ?? [];
+    if (clients.isEmpty) {
+      setState(() {
+        _sheetsMessage = 'No clients to sync — load the dashboard first.';
+        _sheetsMessageIsError = true;
+      });
+      return;
+    }
+    var token = _googleAccessToken;
+    if (token == null) {
+      await _googleSignIn();
+      token = _googleAccessToken;
+      if (token == null || !mounted) return;
+    }
+    setState(() {
+      _syncing = true;
+      _sheetsMessage = null;
+    });
+    final (ok, msg) = await _sheets.sync(
+      accessToken: token,
+      spreadsheetId: _sheetsIdController.text.trim(),
+      clients: clients,
+    );
+    if (!mounted) return;
+    setState(() {
+      _syncing = false;
+      _sheetsMessage = msg;
+      _sheetsMessageIsError = !ok;
+      if (!ok && msg.contains('401')) _googleAccessToken = null;
     });
   }
 
@@ -229,6 +304,91 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
+                      'Google Sheets sync',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Writes the client table (panel data) into the '
+                      '`vlesslist` tab of your spreadsheet — dates as '
+                      'ISO yyyy-MM-dd, so Sheets can never misread them.',
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _sheetsIdController,
+                      decoration: const InputDecoration(
+                        labelText: 'Spreadsheet ID',
+                        hintText: 'Paste the sheet URL or just its ID',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.url,
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed:
+                                _signingIn ? null : _googleSignIn,
+                            child: _signingIn
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : Text(
+                                    _googleAccessToken == null
+                                        ? 'Sign in with Google'
+                                        : 'Signed in ✓ — tap to re-sign in',
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: _syncing ? null : _syncSheets,
+                            child: _syncing
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('Sync now'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_sheetsMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _sheetsMessage!,
+                        style: TextStyle(
+                          color: _sheetsMessageIsError
+                              ? Colors.redAccent
+                              : Colors.tealAccent,
+                        ),
+                      ),
+                    ],
+                    if (_sheetsSetupSteps != null) ...[
+                      const SizedBox(height: 12),
+                      SelectableText(_sheetsSetupSteps!),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
                       'Danger zone',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
@@ -244,8 +404,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 24),
             const Center(
               child: Text(
-                'MistyRoute Manager v0.1.0 — read-only demo.\n'
-                'Write actions, Sheets sync and the APK arrive later.',
+                'MistyRoute Manager v0.2.0 — write actions, SSH setup, '
+                'Sheets sync.\n'
+                'Live data needs the Android app (web cannot reach the '
+                'panel: no CORS headers).',
                 textAlign: TextAlign.center,
               ),
             ),

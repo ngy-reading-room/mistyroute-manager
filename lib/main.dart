@@ -1,15 +1,18 @@
-/// MistyRoute Manager v0.1.0 — read-only demo for a 3x-ui panel.
+/// MistyRoute Manager v0.2.0 — 3x-ui panel management.
 ///
-/// Dashboard (bandwidth monitor + user list) and Settings (panel URL +
-/// API token, demo-data toggle). Live data comes from the panel API
-/// (GET panel/api/inbounds/list + panel/api/server/status, Bearer token);
-/// without credentials the app shows clearly-labelled demo data.
+/// Dashboard (bandwidth monitor + user list + write actions), Setup
+/// (SSH one-tap tunnel actions, mobile only) and Settings (panel URL +
+/// API token, demo-data toggle, Google Sheets sync).
+/// Live data comes from the panel API (GET panel/api/inbounds/list +
+/// panel/api/server/status, Bearer token); without credentials the app
+/// shows clearly-labelled demo data.
 library;
 
 import 'package:flutter/material.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/setup_screen.dart';
 import 'services/panel_provider.dart';
 
 void main() async {
@@ -65,7 +68,7 @@ class _MainScreenState extends State<MainScreen> {
               return const Padding(
                 padding: EdgeInsets.only(right: 12),
                 child: Center(
-                  child: Text('v0.1.0'),
+                  child: Text('v0.2.0'),
                 ),
               );
             },
@@ -76,6 +79,7 @@ class _MainScreenState extends State<MainScreen> {
         index: _tab,
         children: [
           DashboardScreen(provider: widget.provider),
+          SetupScreen(provider: widget.provider),
           SettingsScreen(provider: widget.provider),
         ],
       ),
@@ -87,6 +91,11 @@ class _MainScreenState extends State<MainScreen> {
             icon: Icon(Icons.dashboard_outlined),
             selectedIcon: Icon(Icons.dashboard),
             label: 'Dashboard',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.terminal_outlined),
+            selectedIcon: Icon(Icons.terminal),
+            label: 'Setup',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),

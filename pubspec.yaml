@@ -1,5 +1,5 @@
 name: mistyroutemanager
-description: "MistyRoute Manager - 3x-ui panel management app (read-only demo v0.1)"
+description: "MistyRoute Manager - 3x-ui panel management app (write actions + SSH setup v0.2)"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: ^3.13.7
@@ -36,6 +36,11 @@ dependencies:
   cupertino_icons: ^1.0.8
   http: ^1.6.0
   shared_preferences: ^2.5.6
+  dartssh2: ^4.1.0
+  flutter_secure_storage: ^11.2.0
+  google_sign_in: ^7.2.0
+  crypto: ^3.0.8
+  pinenacl: ^0.6.0
 
 dev_dependencies:
   flutter_test:

@@ -77,7 +77,9 @@ PanelData buildDemoData() {
     down += c.downBytes;
   }
   return PanelData(
-    inbounds: [InboundInfo(remark: 'VLESS Reality', upBytes: up, downBytes: down)],
+    inbounds: [
+      InboundInfo(id: 1, protocol: 'vless', remark: 'VLESS Reality', upBytes: up, downBytes: down),
+    ],
     clients: clients,
     serverStatus: const ServerStatus(
       cpu: 12.5,

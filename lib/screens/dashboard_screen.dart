@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../models/panel_models.dart';
 import '../services/panel_provider.dart';
 import '../utils/format.dart';
+import 'add_client_screen.dart';
 import 'client_detail_screen.dart';
 
 enum ClientFilter { all, over80, expiring, disabled }
@@ -46,52 +47,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.provider,
-      builder: (context, _) {
-        final p = widget.provider;
-        final data = p.data;
-        return RefreshIndicator(
-          onRefresh: p.refresh,
-          child: CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(child: _ModeBanner(provider: p)),
-              if (p.isLoading)
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(child: CircularProgressIndicator()),
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => AddClientScreen(provider: widget.provider),
+            ),
+          );
+        },
+        icon: const Icon(Icons.person_add),
+        label: const Text('Add client'),
+      ),
+      body: ListenableBuilder(
+        listenable: widget.provider,
+        builder: (context, _) {
+          final p = widget.provider;
+          final data = p.data;
+          return RefreshIndicator(
+            onRefresh: p.refresh,
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(child: _ModeBanner(provider: p)),
+                if (p.isLoading)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  )
+                else if (p.error != null)
+                  SliverToBoxAdapter(child: _ErrorCard(message: p.error!))
+                else if (data != null) ...[
+                  SliverToBoxAdapter(
+                    child: _InboundTotalsCard(inbounds: data.inbounds),
                   ),
-                )
-              else if (p.error != null)
-                SliverToBoxAdapter(child: _ErrorCard(message: p.error!))
-              else if (data != null) ...[
-                SliverToBoxAdapter(
-                  child: _InboundTotalsCard(inbounds: data.inbounds),
-                ),
-                SliverToBoxAdapter(
-                  child: _ServerStatusCard(
-                    status: data.serverStatus,
-                    isLive: !p.showingDemo,
+                  SliverToBoxAdapter(
+                    child: _ServerStatusCard(
+                      status: data.serverStatus,
+                      isLive: !p.showingDemo,
+                    ),
                   ),
-                ),
-                SliverToBoxAdapter(
-                  child: _FlagsRow(
-                    data: data,
-                    filter: _filter,
-                    onFilter: (f) => setState(() => _filter = f),
+                  SliverToBoxAdapter(
+                    child: _FlagsRow(
+                      data: data,
+                      filter: _filter,
+                      onFilter: (f) => setState(() => _filter = f),
+                    ),
                   ),
-                ),
-                _ClientSliverList(
-                  clients: _filtered(data.clients),
-                  usageColor: _usageColor,
-                ),
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                  _ClientSliverList(
+                    clients: _filtered(data.clients),
+                    usageColor: _usageColor,
+                    provider: widget.provider,
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                ],
               ],
-            ],
-          ),
-        );
-      },
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -467,10 +482,12 @@ class _ClientSliverList extends StatelessWidget {
   const _ClientSliverList({
     required this.clients,
     required this.usageColor,
+    required this.provider,
   });
 
   final List<ClientInfo> clients;
   final Color Function(ClientInfo) usageColor;
+  final PanelProvider provider;
 
   @override
   Widget build(BuildContext context) {
@@ -543,7 +560,10 @@ class _ClientSliverList extends StatelessWidget {
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => ClientDetailScreen(client: c),
+                    builder: (_) => ClientDetailScreen(
+                      client: c,
+                      provider: provider,
+                    ),
                   ),
                 );
               },

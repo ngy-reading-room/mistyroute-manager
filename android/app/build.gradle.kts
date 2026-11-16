@@ -19,6 +19,7 @@ android {
         applicationId = "com.ngy.mistyroutemanager"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // minSdk 23: flutter_secure_storage v11 needs Android 6.0+.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
@@ -27,6 +28,23 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    // The debug keystore lives in the PERSISTENT workspace (not
+    // /root/.android): the VM is replaced from time to time and /root is
+    // wiped, which regenerates the debug key and changes the APK's SHA-1
+    // — breaking Google sign-in (DEVELOPER_ERROR, status 10) until the new
+    // fingerprint is registered. Same keystore as NGY Reading Room, so
+    // the APK signature (and its SHA-1) stays stable across rebuilds.
+    // SHA-1: 2A:F2:AC:97:7F:A8:9D:3C:01:9F:A7:61:BB:63:B4:4D:55:CF:CC:C6
+    // (register this fingerprint for the Google Sheets OAuth client).
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("/home/hatch/workspace/tools/android-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {

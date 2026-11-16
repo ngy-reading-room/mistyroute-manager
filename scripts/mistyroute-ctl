@@ -1,0 +1,71 @@
+#!/bin/bash
+# mistyroute-ctl — forced-command dispatch for the MistyRoute Manager app.
+#
+# The app SSHes in as root with its OWN Ed25519 keypair (generated on
+# the phone). This script is the ONLY thing that key can run: OpenSSH's
+# forced command replaces whatever the client asked for, and this
+# script allows exactly three words from $SSH_ORIGINAL_COMMAND:
+#   url      — print the current panel URL (tunnel host + sub-path)
+#   restart  — systemctl restart cloudflared-panel.service
+#   status   — systemctl is-active + last 5 log lines
+# Anything else (including an empty command, extra arguments, shell
+# metacharacters, or a subshell) is refused. There is no arbitrary
+# shell access through this key, ever.
+#
+# INSTALL (run once on the VPS as root):
+#   1. Copy this file to /root/mistyroute-ctl and make it executable:
+#        install -m 700 mistyroute-ctl /root/mistyroute-ctl
+#   2. In the app, open Setup -> the app shows its public key line.
+#      Copy it, then on the VPS append this line to /root/.ssh/authorized_keys
+#      (ONE line — the command=... prefix, then the key, then a comment):
+#        command="/root/mistyroute-ctl",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA... mistyroute-manager
+#      (Replace "ssh-ed25519 AAAA... mistyroute-manager" with the app's
+#      public-key line. The `command="..."` part and the restrictions
+#      must be on the SAME line as the key.)
+#   3. Test from the app: Setup -> SSH Connect, then Check Tunnel Link.
+#
+# To REMOVE the app's access later, delete that one line from
+# /root/.ssh/authorized_keys. The app's key is useless without it.
+#
+# Panel sub-path: /MjfgiJflHcfijX4TYv/ (the 3x-ui panel's sub URL).
+# If the panel sub-path ever changes, update SUB_PATH below.
+
+set -u
+SUB_PATH="/MjfgiJflHcfijX4TYv/"
+LOG_FILE="/var/log/cloudflared-panel.log"
+SERVICE="cloudflared-panel.service"
+
+cmd="${SSH_ORIGINAL_COMMAND:-}"
+
+case "$cmd" in
+  url)
+    host="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_FILE" 2>/dev/null | tail -1)"
+    if [ -z "$host" ]; then
+      echo "mistyroute-ctl: no tunnel hostname found in $LOG_FILE" >&2
+      echo "mistyroute-ctl: is $SERVICE running? Try the Tunnel Status action." >&2
+      exit 1
+    fi
+    echo "${host}${SUB_PATH}"
+    ;;
+  restart)
+    if systemctl restart "$SERVICE"; then
+      echo "restarted $SERVICE"
+      # Give cloudflared a moment, then report whether it came back.
+      sleep 2
+      echo "status: $(systemctl is-active "$SERVICE")"
+    else
+      echo "mistyroute-ctl: systemctl restart $SERVICE failed" >&2
+      exit 1
+    fi
+    ;;
+  status)
+    echo "service: $(systemctl is-active "$SERVICE")"
+    echo "--- last 5 log lines ---"
+    tail -5 "$LOG_FILE" 2>/dev/null || echo "(no log file at $LOG_FILE)"
+    ;;
+  *)
+    echo "mistyroute-ctl: command not allowed: '$cmd'" >&2
+    echo "mistyroute-ctl: allowed commands are: url, restart, status" >&2
+    exit 1
+    ;;
+esac

@@ -3,7 +3,7 @@
 /// Inbounds list shape (verified against the panel's read path — see
 /// vpn-api-collect.py and the 3x-ui API docs):
 ///   GET {base}panel/api/inbounds/list  ->  {success, msg, obj: [...]}
-///   inbound: {remark, up, down, clientStats: [...]}
+///   inbound: {id, protocol, remark, up, down, clientStats: [...]}
 ///   clientStat: {email, up, down, total, expiryTime, enable}
 ///     - total: quota in bytes; 0 = unlimited
 ///     - expiryTime: epoch millis; 0 = no expiry
@@ -54,6 +54,25 @@ class ClientInfo {
   /// Expiry as epoch millis; 0 means no expiry.
   final int expiryTimeMs;
 
+  ClientInfo copyWith({
+    String? email,
+    bool? enabled,
+    int? upBytes,
+    int? downBytes,
+    int? quotaBytes,
+    int? expiryTimeMs,
+  }) {
+    return ClientInfo(
+      email: email ?? this.email,
+      inbound: inbound,
+      enabled: enabled ?? this.enabled,
+      upBytes: upBytes ?? this.upBytes,
+      downBytes: downBytes ?? this.downBytes,
+      quotaBytes: quotaBytes ?? this.quotaBytes,
+      expiryTimeMs: expiryTimeMs ?? this.expiryTimeMs,
+    );
+  }
+
   int get usedBytes => upBytes + downBytes;
 
   double get usedGb => usedBytes / (1024 * 1024 * 1024);
@@ -93,13 +112,22 @@ class ClientInfo {
 }
 
 /// One inbound (VLESS, etc.) with its traffic totals.
+///
+/// `id` and `protocol` come from the same inbounds/list response and
+/// are what the v0.2 write actions need: add-client targets the
+/// inbound id, and the protocol decides the client credential shape
+/// (VLESS -> UUID + xtls-rprx-vision flow).
 class InboundInfo {
   const InboundInfo({
+    required this.id,
+    required this.protocol,
     required this.remark,
     required this.upBytes,
     required this.downBytes,
   });
 
+  final int id;
+  final String protocol;
   final String remark;
   final int upBytes;
   final int downBytes;
@@ -165,6 +193,8 @@ class PanelData {
       final inbound = raw as Map<String, dynamic>;
       final remark = (inbound['remark'] as String?) ?? 'Inbound';
       inbounds.add(InboundInfo(
+        id: (inbound['id'] as num?)?.toInt() ?? 0,
+        protocol: (inbound['protocol'] as String?) ?? '',
         remark: remark,
         upBytes: (inbound['up'] as num?)?.toInt() ?? 0,
         downBytes: (inbound['down'] as num?)?.toInt() ?? 0,
