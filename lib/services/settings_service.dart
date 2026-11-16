@@ -14,6 +14,7 @@ class PanelSettings {
     this.apiToken = '',
     this.useDemoData = true,
     this.sheetsSpreadsheetId = '',
+    this.doApiToken = '',
   });
 
   final String panelUrl;
@@ -28,6 +29,12 @@ class PanelSettings {
   /// panel -> `vlesslist` sync. Empty = not configured.
   final String sheetsSpreadsheetId;
 
+  /// DigitalOcean API token, OPTIONAL and secondary only: the
+  /// Billing estimate works without it (panel/VPS data). When set,
+  /// the app can also show the DO account balance. Stored on-device
+  /// only, never in code.
+  final String doApiToken;
+
   bool get hasLiveCredentials =>
       panelUrl.trim().isNotEmpty && apiToken.trim().isNotEmpty;
 
@@ -36,12 +43,14 @@ class PanelSettings {
     String? apiToken,
     bool? useDemoData,
     String? sheetsSpreadsheetId,
+    String? doApiToken,
   }) =>
       PanelSettings(
         panelUrl: panelUrl ?? this.panelUrl,
         apiToken: apiToken ?? this.apiToken,
         useDemoData: useDemoData ?? this.useDemoData,
         sheetsSpreadsheetId: sheetsSpreadsheetId ?? this.sheetsSpreadsheetId,
+        doApiToken: doApiToken ?? this.doApiToken,
       );
 }
 
@@ -50,6 +59,7 @@ class SettingsService {
   static const _kApiToken = 'mistyroute_api_token';
   static const _kUseDemo = 'mistyroute_use_demo_data';
   static const _kSheetsId = 'mistyroute_sheets_spreadsheet_id';
+  static const _kDoApiToken = 'mistyroute_do_api_token';
 
   Future<PanelSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -58,6 +68,7 @@ class SettingsService {
       apiToken: prefs.getString(_kApiToken) ?? '',
       useDemoData: prefs.getBool(_kUseDemo) ?? true,
       sheetsSpreadsheetId: prefs.getString(_kSheetsId) ?? '',
+      doApiToken: prefs.getString(_kDoApiToken) ?? '',
     );
   }
 
@@ -67,6 +78,7 @@ class SettingsService {
     await prefs.setString(_kApiToken, settings.apiToken);
     await prefs.setBool(_kUseDemo, settings.useDemoData);
     await prefs.setString(_kSheetsId, settings.sheetsSpreadsheetId);
+    await prefs.setString(_kDoApiToken, settings.doApiToken);
   }
 
   Future<void> clearCredentials() async {

@@ -284,9 +284,14 @@ class _KeyCard extends StatelessWidget {
               const SizedBox(height: 8),
               const Text('Public key (install this on the VPS):'),
               const SizedBox(height: 4),
-              SelectableText(
-                info.publicKeyLine,
-                style: const TextStyle(fontFamily: 'monospace'),
+              // Long unbreakable tokens (public key ~90 chars) would
+              // overflow a narrow phone — scroll them horizontally.
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SelectableText(
+                  info.publicKeyLine,
+                  style: const TextStyle(fontFamily: 'monospace'),
+                ),
               ),
               const SizedBox(height: 12),
               Wrap(

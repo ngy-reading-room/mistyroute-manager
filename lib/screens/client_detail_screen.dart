@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../models/panel_models.dart';
+import '../services/client_actions.dart';
 import '../services/panel_provider.dart';
 import '../utils/format.dart';
 
@@ -71,9 +72,10 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Renew client?'),
         content: Text(
-          'New remark dates start today, +$months month${months > 1 ? 's' : ''}. '
-          'Expiry moves to the new end date (+1 day on the panel) '
-          'and traffic is reset to zero.',
+          'The new period continues from the current end date, '
+          '+$months month${months > 1 ? 's' : ''} — or from today if '
+          'the client already expired. Expiry moves to the new end '
+          'date (+1 day on the panel) and traffic is reset to zero.',
         ),
         actions: [
           TextButton(
@@ -160,6 +162,21 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     );
   }
 
+  /// One tap: fix this client's name from existing data only.
+  Future<void> _fixName() async {
+    setState(() => _busy = true);
+    final outcome = await widget.provider.fixClientName(_client);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    final msg = switch (outcome) {
+      NameFixed(:final correctedEmail) =>
+        '${outcome.email} → $correctedEmail',
+      NameAlreadyCorrect() => 'Name is already correct.',
+      NameSkipped(:final reason) => 'Skipped: $reason',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   Future<void> _delete() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -207,6 +224,10 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 children: [
                   _Row(label: 'Name / remark', value: c.email),
                   _Row(label: 'Inbound', value: c.inbound),
+                  _Row(
+                    label: 'Group',
+                    value: c.group.isEmpty ? '—' : c.group,
+                  ),
                   _Row(
                     label: 'Status',
                     value: c.enabled ? 'Enabled' : 'Disabled',
@@ -313,6 +334,11 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                           c.enabled ? Icons.person_off : Icons.person,
                         ),
                         label: Text(c.enabled ? 'Disable' : 'Enable'),
+                      ),
+                      FilledButton.tonalIcon(
+                        onPressed: _busy ? null : _fixName,
+                        icon: const Icon(Icons.auto_fix_high),
+                        label: const Text('Fix name'),
                       ),
                       FilledButton.tonalIcon(
                         onPressed: _busy ? null : _delete,

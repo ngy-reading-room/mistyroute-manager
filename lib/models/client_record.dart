@@ -6,8 +6,11 @@
 ///   `inboundIds`.
 /// - `model.ClientRecord` JSON keys: `id` (DB record id — NOT the UUID),
 ///   `email`, `subId`, `uuid`, `password`, `auth`, `flow`, `security`,
-///   `limitIp`, `totalGB`, `expiryTime`, `enable`, `tgId`, `comment`,
-///   `reset`.
+///   `limitIp`, `totalGB`, `expiryTime`, `enable`, `tgId`, `group`,
+///   `comment`, `reset`.
+///   (`group` is the logical grouping label — verified in the v3
+///   model on pkg.go.dev: `Client.Group string json:"group,omitempty"`
+///   and `ClientRecord.Group string json:"group"`.)
 /// - `model.Client` (the update/create body) uses `id` for the UUID and
 ///   `totalGB` for the quota.
 ///
@@ -41,6 +44,7 @@ class ClientRecord {
     required this.tgId,
     required this.comment,
     required this.reset,
+    this.group = '',
     this.reverse,
   });
 
@@ -77,6 +81,7 @@ class ClientRecord {
       tgId: (json['tgId'] as num?)?.toInt() ?? 0,
       comment: (json['comment'] as String?) ?? '',
       reset: (json['reset'] as num?)?.toInt() ?? 0,
+      group: (json['group'] as String?) ?? '',
       reverse: json['reverse'] as Map<String, dynamic>?,
     );
   }
@@ -105,6 +110,11 @@ class ClientRecord {
   final String comment;
   final int reset;
 
+  /// Logical grouping label (MNA, MayZin, Friends, FOC, …).
+  /// Carried through on every update so a renewal / quota change
+  /// never wipes the client's group.
+  final String group;
+
   /// VLESS reverse-proxy settings, carried through untouched when the
   /// record has them (unused for this panel's clients).
   final Map<String, dynamic>? reverse;
@@ -115,12 +125,15 @@ class ClientRecord {
   /// intend to change is zeroed) and applies only the given overrides.
   /// The UUID is always sent as `id` — never leave it empty, or the
   /// panel generates a new UUID and the client's link breaks.
+  /// The group is always sent too, for the same reason: an update
+  /// without it would clear the client's group on the panel.
   Map<String, dynamic> toClientJson({
     String? email,
     int? totalGb,
     int? expiryTimeMs,
     bool? enable,
     String? comment,
+    String? group,
   }) {
     final body = <String, dynamic>{
       'id': uuid,
@@ -131,6 +144,7 @@ class ClientRecord {
       'enable': enable ?? this.enable,
       'tgId': tgId,
       'subId': subId,
+      'group': group ?? this.group,
       'comment': comment ?? this.comment,
       'reset': reset,
     };

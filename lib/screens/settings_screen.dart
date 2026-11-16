@@ -25,11 +25,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _urlController;
   late final TextEditingController _tokenController;
   late final TextEditingController _sheetsIdController;
+  late final TextEditingController _doTokenController;
   bool _obscureToken = true;
+  bool _obscureDoToken = true;
   bool _saving = false;
   bool _testing = false;
+  bool _checkingDo = false;
   String? _message;
   bool _messageIsError = false;
+  String? _doMessage;
+  bool _doMessageIsError = false;
 
   final _sheets = SheetsSyncService();
   final _googleSignInService = GoogleSignInService();
@@ -50,6 +55,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _sheetsIdController = TextEditingController(
       text: widget.provider.settings.sheetsSpreadsheetId,
     );
+    _doTokenController = TextEditingController(
+      text: widget.provider.settings.doApiToken,
+    );
   }
 
   @override
@@ -57,6 +65,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _urlController.dispose();
     _tokenController.dispose();
     _sheetsIdController.dispose();
+    _doTokenController.dispose();
     super.dispose();
   }
 
@@ -69,6 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       panelUrl: _urlController.text.trim(),
       apiToken: _tokenController.text.trim(),
       sheetsSpreadsheetId: _sheetsIdController.text.trim(),
+      doApiToken: _doTokenController.text.trim(),
     );
     await widget.provider.saveSettings(next);
     if (!mounted) return;
@@ -97,6 +107,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _testing = false;
       _message = msg;
       _messageIsError = !ok;
+    });
+  }
+
+  Future<void> _checkDo() async {
+    setState(() {
+      _checkingDo = true;
+      _doMessage = null;
+    });
+    // Save the token first so the check uses what was just typed.
+    await widget.provider.saveSettings(
+      widget.provider.settings.copyWith(
+        doApiToken: _doTokenController.text.trim(),
+      ),
+    );
+    final msg = await widget.provider.checkDoBalance();
+    if (!mounted) return;
+    setState(() {
+      _checkingDo = false;
+      _doMessage = msg;
+      _doMessageIsError = msg.startsWith('Could not') || msg.startsWith('No DO');
     });
   }
 
@@ -389,6 +419,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
+                      'DigitalOcean token (optional)',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'The Billing estimate on the dashboard needs no '
+                      'token — it is computed from VPS/panel data. A DO '
+                      'token only adds the DO account balance, as a '
+                      'secondary check.\n\n'
+                      'Create a read-only token: DO Control Panel → '
+                      'API → Generate New Token (read scope is enough).',
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _doTokenController,
+                      decoration: InputDecoration(
+                        labelText: 'DO API token',
+                        hintText: 'dop_v1_…',
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureDoToken
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () => setState(
+                            () => _obscureDoToken = !_obscureDoToken,
+                          ),
+                        ),
+                      ),
+                      obscureText: _obscureDoToken,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Stored only on this device. Never included in '
+                      'the app or its repository.',
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: _checkingDo ? null : _checkDo,
+                      child: _checkingDo
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text('Check DO balance'),
+                    ),
+                    if (_doMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _doMessage!,
+                        style: TextStyle(
+                          color: _doMessageIsError
+                              ? Colors.redAccent
+                              : Colors.tealAccent,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
                       'Danger zone',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
@@ -404,7 +507,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 24),
             const Center(
               child: Text(
-                'MistyRoute Manager v0.2.0 — write actions, SSH setup, '
+                'MistyRoute Manager v0.2.1 — write actions, SSH setup, '
                 'Sheets sync.\n'
                 'Live data needs the Android app (web cannot reach the '
                 'panel: no CORS headers).',

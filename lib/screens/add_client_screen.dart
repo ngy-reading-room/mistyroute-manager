@@ -24,7 +24,10 @@ class _AddClientScreenState extends State<AddClientScreen> {
   final _nameController = TextEditingController();
   final _quotaController = TextEditingController(text: '50');
   final _limitIpController = TextEditingController(text: '1');
+  final _customGroupController = TextEditingController();
   int _months = 3;
+  // Group: null = no group; '__new__' = type a new group name below.
+  String? _group;
   bool _saving = false;
   String? _error;
 
@@ -33,7 +36,13 @@ class _AddClientScreenState extends State<AddClientScreen> {
     _nameController.dispose();
     _quotaController.dispose();
     _limitIpController.dispose();
+    _customGroupController.dispose();
     super.dispose();
+  }
+
+  String get _selectedGroup {
+    if (_group == '__new__') return _customGroupController.text.trim();
+    return _group ?? '';
   }
 
   Future<void> _save() async {
@@ -67,6 +76,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
       months: _months,
       limitIp: limitIp,
       inboundId: inbound.id,
+      group: _selectedGroup,
     );
     if (!mounted) return;
     setState(() => _saving = false);
@@ -79,6 +89,9 @@ class _AddClientScreenState extends State<AddClientScreen> {
   @override
   Widget build(BuildContext context) {
     final inbound = widget.provider.vlessInbound;
+    // Groups already present in the client list (live or demo).
+    final existingGroups =
+        widget.provider.data?.groupCounts.keys.toList() ?? [];
     return Scaffold(
       appBar: AppBar(title: const Text('Add client')),
       body: ListView(
@@ -132,6 +145,39 @@ class _AddClientScreenState extends State<AddClientScreen> {
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String?>(
+            initialValue: _group,
+            decoration: const InputDecoration(
+              labelText: 'Group',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              const DropdownMenuItem(
+                value: null,
+                child: Text('No group'),
+              ),
+              for (final g in existingGroups)
+                DropdownMenuItem(value: g, child: Text(g)),
+              const DropdownMenuItem(
+                value: '__new__',
+                child: Text('New group…'),
+              ),
+            ],
+            onChanged: (v) => setState(() => _group = v),
+          ),
+          if (_group == '__new__') ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _customGroupController,
+              decoration: const InputDecoration(
+                labelText: 'New group name',
+                hintText: 'e.g. MayZin',
+                border: OutlineInputBorder(),
+              ),
+              textInputAction: TextInputAction.next,
+            ),
+          ],
           const SizedBox(height: 12),
           Text(
             'Inbound: ${inbound == null ? '—' : '${inbound.remark} (${inbound.protocol})'}\n'

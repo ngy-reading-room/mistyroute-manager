@@ -17,6 +17,13 @@
 library;
 
 /// One VPN client (one entry of an inbound's clientStats array).
+///
+/// `group` is the panel's logical grouping label (MNA, MayZin,
+/// Friends, FOC, …). It does NOT come from inbounds/list —
+/// clientStats has no group field — it is filled in from the full
+/// client record (`GET panel/api/clients/get/:email`, where the
+/// v3 model.Client / ClientRecord both carry `group`). Until that
+/// enrichment runs, group is '' (ungrouped).
 class ClientInfo {
   const ClientInfo({
     required this.email,
@@ -26,6 +33,7 @@ class ClientInfo {
     required this.downBytes,
     required this.quotaBytes,
     required this.expiryTimeMs,
+    this.group = '',
   });
 
   factory ClientInfo.fromJson(Map<String, dynamic> json, String inbound) {
@@ -37,6 +45,7 @@ class ClientInfo {
       downBytes: (json['down'] as num?)?.toInt() ?? 0,
       quotaBytes: (json['total'] as num?)?.toInt() ?? 0,
       expiryTimeMs: (json['expiryTime'] as num?)?.toInt() ?? 0,
+      group: (json['group'] as String?) ?? '',
     );
   }
 
@@ -54,6 +63,9 @@ class ClientInfo {
   /// Expiry as epoch millis; 0 means no expiry.
   final int expiryTimeMs;
 
+  /// Panel group label ('' = no group / not loaded yet).
+  final String group;
+
   ClientInfo copyWith({
     String? email,
     bool? enabled,
@@ -61,6 +73,7 @@ class ClientInfo {
     int? downBytes,
     int? quotaBytes,
     int? expiryTimeMs,
+    String? group,
   }) {
     return ClientInfo(
       email: email ?? this.email,
@@ -70,6 +83,7 @@ class ClientInfo {
       downBytes: downBytes ?? this.downBytes,
       quotaBytes: quotaBytes ?? this.quotaBytes,
       expiryTimeMs: expiryTimeMs ?? this.expiryTimeMs,
+      group: group ?? this.group,
     );
   }
 
@@ -211,11 +225,28 @@ class PanelData {
   final List<ClientInfo> clients;
   final ServerStatus? serverStatus;
 
-  PanelData copyWith({ServerStatus? serverStatus}) => PanelData(
+  PanelData copyWith({List<ClientInfo>? clients, ServerStatus? serverStatus}) =>
+      PanelData(
         inbounds: inbounds,
-        clients: clients,
+        clients: clients ?? this.clients,
         serverStatus: serverStatus ?? this.serverStatus,
       );
+
+  /// Group -> client count, non-empty groups only, sorted by name.
+  /// Only groups actually present get a filter chip.
+  Map<String, int> get groupCounts {
+    final counts = <String, int>{};
+    for (final c in clients) {
+      if (c.group.isEmpty) continue;
+      counts[c.group] = (counts[c.group] ?? 0) + 1;
+    }
+    return Map.fromEntries(
+      counts.entries.toList()..sort((a, b) => a.key.compareTo(b.key)),
+    );
+  }
+
+  /// Clients with no group ('' — e.g. the owner's own key).
+  int get ungroupedCount => clients.where((c) => c.group.isEmpty).length;
 
   List<ClientInfo> get byUsageDesc {
     final sorted = List<ClientInfo>.from(clients);

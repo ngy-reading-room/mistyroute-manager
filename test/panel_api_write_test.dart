@@ -112,6 +112,7 @@ void main() {
                 'tgId': 0,
                 'comment': '',
                 'reset': 0,
+                'group': 'MNA',
               },
               'inboundIds': [1],
             })),
@@ -127,12 +128,15 @@ void main() {
       expect(record.uuid, 'uuid-123');
       expect(record.subId, 'X');
       expect(record.totalGb, 50);
+      expect(record.group, 'MNA');
       // The update body carries the UUID as `id` and preserves the rest.
       final body = record.toClientJson(totalGb: 91);
       expect(body['id'], 'uuid-123');
       expect(body['totalGB'], 91);
       expect(body['email'], 'X_15.8.26-15.11.26');
       expect(body['flow'], 'xtls-rprx-vision');
+      // …including the group, so an update never wipes it.
+      expect(body['group'], 'MNA');
     });
 
     test('a failed envelope throws PanelApiException', () async {

@@ -252,3 +252,128 @@ tab, and a Google Sheets sync (panel -> `vlesslist`).
 - Web demo render check in a real browser (the v0.1 7/7 check was a
   cloud-browser pass; this build was verified by analyze + tests +
   md5 only).
+
+---
+
+## v0.2.1+3 (2026-11-16) — fixes + icon + group filter + Fix names + Billing
+
+NayGyi confirmed the v0.2.0 live test (LIVE, 24 clients) and asked for
+the real editable app + a suitable icon. Audit first: **the edit
+actions were already wired in v0.2.0** (Renew / Quota x1.35 / Reset
+traffic / Enable-Disable / Delete in client_detail_screen.dart, Add
+client screen, panel_provider + client_actions + panel_api verified
+vs 3x-ui source commit 85e2ded) — so this is v0.2.1, not v0.3.0.
+Gates: `flutter analyze` clean, `flutter test` 53 passed.
+
+### What was already working (v0.2.0, NOT rebuilt)
+- All five client write actions + Add client + delete (keepTraffic=0,
+  confirm dialogs), UUID preserved via GET-first update, quota x1.35
+  rounds to whole GB, renew = remark dates + panel expiry = end + 1
+  day 00:00 + reset traffic.
+- SSH Setup tab + mistyroute-ctl forced commands + Sheets sync
+  (still needs NayGyi's 5 Cloud Console OAuth steps).
+
+### Fixed — UI glitches from the 23:15 phone screenshots
+- Bandwidth card: the inbound name shared a Row with 3 chips, leaving
+  it ~1 char wide (letters stacked vertically). Now the name has its
+  own line, chips Wrap below.
+- Client cards: `ListTile(isThreeLine: true)` fixed the tile height
+  below the subtitle's real height, painting double/overlapping
+  "Used" lines. Replaced with a custom Card + Column (no fixed
+  height).
+- Server Status header Row: title + Chip could overflow a narrow
+  phone (206px in the 360px test — the test font measures wide; the
+  real cause is two inflexible children). Title is now Expanded.
+- Setup screen: the long public-key line is in a horizontal
+  SingleChildScrollView (it is built in the IndexedStack even on the
+  Dashboard tab).
+- Narrow-phone (360px) widget test now passes: fling uses the real
+  CustomScrollView, search field is scrolled back into view before
+  typing (slivers unmount off-screen children), and the search
+  assertion is scoped to the client Card (the typed query also
+  matches find.text).
+
+### New icon
+- Dark teal (#0B2E35) icon: winding road into mist + shield + signal
+  waves, no text. Source `icon-src/icon-1024.png`. Installed as
+  Android launcher icon (all mipmap sizes + adaptive foreground /
+  background + round), web PWA icons + favicon. App label
+  "MistyRoute Manager".
+
+### Renewal rule (NayGyi's correction)
+- New period CONTINUES from the old remark end date, not today:
+  `EiKay_15.10.26-15.11.26` + 1 month ->
+  `EiKay_15.11.26-15.12.26`. If the old end is already past, start
+  today instead (never backdate an already-over period). Panel expiry
+  = new end + 1 day 00:00. SubId + UUID unchanged (GET-first).
+- Remark format is exactly `Name_D.M.YY-D.M.YY` (dots in dates, one
+  dash between, underscore after name, no zero-padding). Legacy
+  single-date remarks normalise into this form on renewal
+  (`MaNwe22.11.26` -> `MaNwe_22.11.26-22.12.26`, start = old end).
+  `parseRemark` handles all live forms (pair/underscore, pair stuck
+  to name, single date, bare name) without mangling names.
+
+### Group filter (new)
+- Group was missing from the model entirely. Verified vs 3x-ui v3:
+  `Client.group` (`json:"group"`, gorm column `group_name`) comes
+  from `GET /panel/api/clients/get/:email` — NOT from inbounds/list.
+  Plumbed into `ClientInfo.group`, `ClientRecord.group`,
+  `toClientJson` (always sent, so updates never wipe it),
+  `buildCreatePayload`, `PanelProvider.addClient`.
+- Dashboard chips: All groups (n) + one chip per group actually
+  present (with counts) + Ungrouped (n) only when needed. Combines
+  with search + flag filters; stale selection falls back to all.
+  Live groups load in the background after the list (`_enrichGroups`,
+  tolerant per-client failures). Demo data carries groups
+  (MNA 8 / MayZin 10 / Friends 4 / FOC 1 / ungrouped 1).
+
+### Add Client — Group field (NayGyi's spec)
+- Only five fields: Name, Quota, Valid, IP limit, Group. Group is a
+  dropdown of groups already present + "New group…" with a text
+  field; blank = no group. Nothing else is asked for (remark dates,
+  subId, flow, UUID, inbound derived automatically).
+
+### Fix names — one tap (NayGyi's final design)
+- Dashboard "Fix names (scope)" button fixes every fixable name in
+  the selected group chip (or all groups); detail screen has a
+  "Fix name" button for one client. NO preview/confirm dialog —
+  after the run a results dialog lists fixed (old -> new) and
+  skipped with reasons.
+- Dates come from EXISTING data only, never invented:
+  (1) the remark's own start+end pair, (2) panel expiryTime gives
+  only an END date, never a start. A start that cannot be determined
+  => skipped. Consequence: only pair-form remarks can be fixed
+  (e.g. `EiKay15.10.26-15.11.26` -> `EiKay_15.10.26-15.11.26`);
+  single-date (`MaNwe22.11.26`, `ZZWO_16.2.27`, `MAMS11.12.26`)
+  and bare-name (`MaSandar-1`) remarks are ALWAYS skipped, even
+  with a known panel expiry. SubId/UUID untouched (update goes
+  through the fetched record).
+
+### Billing (NayGyi's correction: VPS data is primary, DO optional)
+- `lib/services/billing.dart`: estimate from the panel inbound
+  "down" total (server->client = DO outbound) vs the 1 TB/month
+  allowance, droplet $6.00/month prorated by day, overage $0.01/GiB,
+  projected month-end at the current pace. Works WITHOUT a DO token;
+  the estimate is never blocked by DO being unreachable.
+- Dashboard Billing card shows TWO figures side by side: (1) Total
+  DO cost (USD) and (2) Final AYA charge (MMK), plus the breakdown
+  Base MMK (USD x 4,466.67) + 3% oversea fee = Final (USD x
+  4,600.67), and the projected month-end pair. Labelled "Estimate
+  from VPS data — panel counters are cumulative since the last
+  traffic reset".
+- AYA rates: base stored at statement precision (38,993.99 / $8.73)
+  so the October bill reproduces exactly; 4,466.67 / 4,600.67 are
+  its 2dp display roundings. Unit test: $8.73 -> base 38,993.99 +
+  fee 1,169.82 = final 40,163.81 MMK.
+- DO token is optional/secondary only: Settings has a DO token field
+  (stored on-device, never in code) with in-app instructions
+  (DO Control Panel > API > Generate New Token, read scope) and a
+  "Check DO balance" button; the balance line appears on the
+  Billing card when the check succeeds.
+
+### SSH key constraint (NayGyi, standing for this release)
+- Same package, same persistent debug keystore (same SHA-1), version
+  bump only. No change to mistyroute-ctl or authorized_keys. The
+  app's keypair lives in secure storage and survives an update
+  install. ONLY an uninstall + reinstall generates a new keypair —
+  that is the one case where the VPS line would need replacing.
