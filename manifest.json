@@ -1,11 +1,11 @@
 {
-    "name": "mistyroutemanager",
-    "short_name": "mistyroutemanager",
+    "name": "MistyRoute Manager",
+    "short_name": "MistyRoute",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "MistyRoute Manager - 3x-ui panel management app (read-only demo v0.1)",
+    "background_color": "#0B2E35",
+    "theme_color": "#0B2E35",
+    "description": "MistyRoute Manager - 3x-ui panel management app",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
