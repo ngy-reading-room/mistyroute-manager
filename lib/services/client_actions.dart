@@ -157,10 +157,33 @@ int extendQuotaGb(num currentGb) => (currentGb * 1.35).round();
 
 /// The outcome of planning a name correction for one client.
 /// Dates come from EXISTING data only — never invented:
-/// 1. the remark's own dates when parseable (a start+end pair), or
-/// 2. the panel record's expiryTime (remark end = panel expiry - 1
-///    day) — which only gives an END date, never a start.
-/// A client whose start date cannot be determined is skipped.
+///
+/// - end: the remark's own end date when it has one; the panel
+///   expiryTime's calendar date when the remark has none, or when
+///   the panel date disagrees with the remark by MORE than 1 day
+///   (a stale/typo remark — ZZWO's remark says Feb 16 but the
+///   panel expiry is Jan 16, so the panel wins). A 1-day difference
+///   is the panel's end+1-day convention, so the remark wins
+///   (MTTM's remark says Oct 29, panel expiry Oct 30 00:00).
+///   Verified against the real Nov 16 panel JSON (24 clients):
+///   date(expiryTime) equals the remark end for every
+///   single-date/bare client except ZZWO (31 days off) and MTTM
+///   (1 day off, the convention) — so the task's "expiry minus
+///   1 day" is WRONG and is NOT used here.
+/// - start: the remark's own start date for pair remarks;
+///   otherwise the client record's updated_at date when it is
+///   trusted (unique across the loaded clients, not the creation
+///   time, before the end and within 3 calendar months of it),
+///   the created_at date when the record was never edited since
+///   creation (updated within a minute of created — ZZWO), and
+///   otherwise the end date minus 1 calendar month (the standard
+///   1-month validity; verified against the live subIds, e.g.
+///   MaTheint 24.9.26 and MTTM 29.9.26).
+///   updated_at is a BULK STAMP for clients never edited since
+///   Nov 3 (1793689936000 = 2026-11-03 13:42, shared by 10
+///   clients) — it does NOT equal any renewal date for them, so
+///   a shared updated_at is never trusted.
+/// A client whose end date cannot be determined is skipped.
 sealed class NameCorrection {
   const NameCorrection(this.email);
   final String email;
@@ -185,37 +208,123 @@ class NameSkipped extends NameCorrection {
 
 /// Plan a name correction for `email` (the panel remark).
 ///
-/// `expiryTimeMs` is the panel record's expiry (epoch ms, 0 = none);
-/// it is only consulted for the skip reason — a start date can
-/// never come from it, so a single-date or bare remark can never
-/// be fixed by this function, only skipped.
+/// `expiryTimeMs` is the panel record's expiry (epoch ms, 0 = none).
+/// `updatedAtMs` / `createdAtMs` are the panel record's timestamps
+/// (epoch ms, 0 = not loaded yet); `sharedUpdatedAtMs` holds the
+/// updated_at values that appear for more than one client in the
+/// loaded list (the Nov 3 bulk stamp) and are therefore untrusted.
 /// - pair present (`EiKay15.10.26-15.11.26` or the canonical form):
 ///   start + end are known -> canonical `Name_start-end`; if the
 ///   remark is already canonical, unchanged.
 /// - single date (`MaNwe22.11.26`, `ZZWO_16.2.27`) or bare name
-///   (`MaSandar-1`): start unknown -> skipped, with the reason.
+///   (`MaSandar-1`): the end comes from [remarkEndDate] and the
+///   start from the record (see the class doc above); when neither
+///   the remark nor the panel gives an end date, the client is
+///   skipped (e.g. bigsun, expiry 0).
 /// - end not after start: skipped (inconsistent dates).
-NameCorrection planNameCorrection(String email, int expiryTimeMs) {
+NameCorrection planNameCorrection(
+  String email,
+  int expiryTimeMs, {
+  int updatedAtMs = 0,
+  int createdAtMs = 0,
+  Set<int> sharedUpdatedAtMs = const {},
+}) {
   final parts = parseRemark(email);
-  final start = parts.start;
-  final end = parts.end;
-  if (start != null && end != null) {
-    if (!end.isAfter(start)) {
-      return NameSkipped(email, 'end date is not after the start date');
+  final end = remarkEndDate(email, expiryTimeMs);
+  if (end == null) {
+    return NameSkipped(email, 'no dates in the existing data');
+  }
+  final start = parts.start ??
+      _startFromRecord(
+        end,
+        updatedAtMs: updatedAtMs,
+        createdAtMs: createdAtMs,
+        sharedUpdatedAtMs: sharedUpdatedAtMs,
+      );
+  if (start == null || !end.isAfter(start)) {
+    return NameSkipped(email, 'end date is not after the start date');
+  }
+  final corrected = buildRemark(parts.name, start, end);
+  if (corrected == email) return NameAlreadyCorrect(email);
+  return NameFixed(email, corrected);
+}
+
+/// The calendar date (local time) of a panel epoch-ms timestamp,
+/// or null when the timestamp is 0 (no expiry / not loaded).
+DateTime? dateOfEpochMs(int epochMs) {
+  if (epochMs <= 0) return null;
+  final d = DateTime.fromMillisecondsSinceEpoch(epochMs);
+  return DateTime(d.year, d.month, d.day);
+}
+
+/// The remark end date for `email`, from existing data only:
+/// the remark's own end date when it has one, EXCEPT when the
+/// panel expiry's calendar date disagrees with it by more than
+/// 1 day — then the panel date wins (the remark is stale or a
+/// typo: ZZWO's remark says 16.2.27, the panel expiry is
+/// 2027-01-16). A 1-day difference is the panel's end+1-day
+/// convention (MTTM: remark 29.10.26, expiry 2026-10-30 00:00),
+/// so the remark wins. Bare names have no remark date, so the
+/// panel date is used; with neither, null.
+DateTime? remarkEndDate(String email, int expiryTimeMs) {
+  final remarkEnd = parseRemark(email).end;
+  final panelDate = dateOfEpochMs(expiryTimeMs);
+  if (remarkEnd == null) return panelDate;
+  if (panelDate != null &&
+      (panelDate.difference(remarkEnd).inDays).abs() > 1) {
+    return panelDate;
+  }
+  return remarkEnd;
+}
+
+/// The updated_at values that occur for more than one client
+/// (the panel's Nov 3 bulk stamp, 1793689936000, is the known
+/// case). Values of 0 (not loaded) never count as shared.
+Set<int> bulkUpdatedAtValues(Iterable<int> updatedAtMs) {
+  final counts = <int, int>{};
+  for (final ms in updatedAtMs) {
+    if (ms > 0) counts[ms] = (counts[ms] ?? 0) + 1;
+  }
+  return counts.entries
+      .where((e) => e.value > 1)
+      .map((e) => e.key)
+      .toSet();
+}
+
+/// Derive a start date for a remark with no start of its own.
+/// Order: never-edited record -> trusted last edit -> the
+/// standard 1-month validity (end minus 1 calendar month).
+/// Never returns a date on or after `end` (callers check).
+DateTime? _startFromRecord(
+  DateTime end, {
+  required int updatedAtMs,
+  required int createdAtMs,
+  required Set<int> sharedUpdatedAtMs,
+}) {
+  // Never edited since creation: updated_at within a minute of
+  // created_at (ZZWO: 14 ms apart) — the period started on the
+  // creation date.
+  if (createdAtMs > 0 &&
+      updatedAtMs > 0 &&
+      (updatedAtMs - createdAtMs).abs() < 60000) {
+    final created = dateOfEpochMs(createdAtMs);
+    if (created != null && created.isBefore(end)) return created;
+  }
+  // Trusted last edit: a unique updated_at that is not the
+  // creation time, before the end, and within 3 calendar months
+  // of the end (inclusive — MaSandar's Nov 15 -> Feb 15 is
+  // exactly 3 months).
+  if (updatedAtMs > 0 &&
+      updatedAtMs != createdAtMs &&
+      !sharedUpdatedAtMs.contains(updatedAtMs)) {
+    final updated = dateOfEpochMs(updatedAtMs);
+    if (updated != null && updated.isBefore(end)) {
+      final earliest = addMonths(end, -3);
+      if (!updated.isBefore(earliest)) return updated;
     }
-    final corrected = buildRemark(parts.name, start, end);
-    if (corrected == email) return NameAlreadyCorrect(email);
-    return NameFixed(email, corrected);
   }
-  if (end != null) {
-    return NameSkipped(email,
-        'start date is not in the existing data — only an end date is known');
-  }
-  if (expiryTimeMs > 0) {
-    return NameSkipped(email,
-        'start date is not in the existing data — only a panel expiry is known');
-  }
-  return NameSkipped(email, 'no dates in the existing data');
+  // Fallback: the standard 1-month validity, end minus 1 month.
+  return addMonths(end, -1);
 }
 
 /// Whole-GB quota from a byte quota (clientStats `total`).

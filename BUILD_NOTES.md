@@ -400,3 +400,142 @@ Gates: `flutter analyze` clean, `flutter test` 53 passed.
 - NOT yet done: live-browser render check of the web demo
   (subagent has no live browser — parent to arrange) and NayGyi's
   phone test of the APK.
+
+## v0.2.2+4 (2026-11-17) — Fix names for dateless remarks + Sheets sync A–F
+
+NayGyi: "fix the dates even without a date in the name — draw the
+data from the client expire date", plus "also fix Google Sheets sync"
+(the app wrote the wrong 8-column format). Gates: `flutter analyze`
+clean, `flutter test` **70 passed** (was 53 in v0.2.1).
+
+### Date-derivation rule — VERIFIED against the real panel data, then implemented
+
+The task's stated rule ("end = expiryTime minus 1 day") is WRONG
+and was NOT used. Verified against the real Nov 16 panel JSON export
+(24 clients, retrieved from the chat history with passwords redacted)
+and against the live `vlesslist` sheet (read 2026-11-17):
+
+- **updated_at DOES track the last edit for edited clients:**
+  MaSandar-1/2 updated Nov 15 11:10/11:11 (= renewal date Nov 15),
+  MAMS Nov 11 15:13 (= Nov 11 edit), ZZWO Nov 16 12:32 (=
+  creation), MeMe Nov 12 06:54 (= Nov 12 quota extension),
+  KoYeMin Nov 5 10:52, MaMar Nov 3 15:19.
+- **BUT updated_at is a bulk stamp for never-edited-since-Nov-3
+  clients:** `1793689936000` = 2026-11-03 13:42, identical for 10
+  clients (bigsun, MaMee, MayZin, MayZinMom, MaNwe, MaMya,
+  MaTheint, MaKyalSin, MTTM, MomMyatPwintFOC). It does NOT equal
+  any renewal date for them — using it as a start date would be
+  wrong (MaNwe would get 3.11.26 instead of 22.10.26). A shared
+  updated_at is therefore never trusted
+  (`bulkUpdatedAtValues` in client_actions.dart).
+- **End date = the remark's own end date; the panel expiry's
+  calendar date wins ONLY when it differs by more than 1 day**
+  (a stale/typo remark). In the Nov 16 JSON, date(expiryTime)
+  EQUALS the remark end for every single-date/bare client:
+  MaSandar Feb 15 23:59 -> Feb 15, MAMS Dec 11 23:59 -> Dec 11,
+  MaNwe Nov 22 23:59 -> Nov 22, MaMee Dec 3 23:59 -> Dec 3,
+  EiKay Nov 15 00:00 -> Nov 15, MaTheint Oct 24 00:00 -> Oct 24,
+  MaKyalSin Nov 26 00:00 -> Nov 26. Minus-1-day would give Feb 14
+  / Dec 10 / Nov 21 — wrong for all of them. The two exceptions
+  prove the >1-day rule: ZZWO (remark Feb 16, panel Jan 16, 31
+  days apart -> panel wins, the known unresolved mismatch) and
+  MTTM (remark Oct 29, panel Oct 30 00:00, 1 day apart -> remark
+  wins, the panel's end+1-day convention). Pair remarks are
+  unaffected (MaMar/Cecilion: expiry Dec 4 00:00, remark end
+  Dec 3 — Fix names uses the remark dates).
+- **Start date:** (1) pair remark -> the remark's start;
+  (2) record never edited since creation (updated_at within a
+  minute of created_at — ZZWO: 14 ms apart) -> the creation date;
+  (3) trusted updated_at (unique across the loaded clients, not
+  the creation time, before the end, within 3 calendar months of
+  it, inclusive) -> that date; (4) otherwise the end date minus
+  1 calendar month (the standard 1-month validity — verified
+  against the live subIds: MaTheint 24.9.26, MTTM 29.9.26).
+  ExpiryTime 0 (bigsun, MomMyatPwintFOC) -> skipped.
+- **Verified results:** MaSandar-1 -> `MaSandar-1_15.11.26-15.2.27`;
+  MAMS -> `MAMS_11.11.26-11.12.26`; MaNwe -> `MaNwe_22.10.26-22.11.26`;
+  ZZWO -> `ZZWO_16.11.26-16.1.27`; KoYeMin -> `KoYeMin_5.11.26-2.12.26`;
+  MaMee -> `MaMee_3.11.26-3.12.26`; MaTheint -> `MaTheint_24.9.26-24.10.26`;
+  MaKyalSin -> `MaKyalSin_26.10.26-26.11.26`; MTTM -> `MTTM_29.9.26-29.10.26`.
+- Implementation: `planNameCorrection` in client_actions.dart now
+  takes named `updatedAtMs` / `createdAtMs` /
+  `sharedUpdatedAtMs`; `remarkEndDate` (end rule) and
+  `dateOfEpochMs` are shared with the Sheets sync. `ClientRecord`
+  parses `created_at` / `updated_at`; `ClientInfo` carries `subId`
+  + both timestamps; the provider's `_enrichClientDetails`
+  (renamed from `_enrichGroups`) fills group + subId + timestamps
+  from the per-client records. `_applyNameFix` fetches the record
+  first when the remark has no start and the timestamps are not
+  loaded yet — planning from the 1-month fallback without checking
+  the record could pick the wrong start (MaSandar's trusted Nov 15
+  vs the Jan 15 fallback). Demo data mirrors the real patterns
+  (trusted edit, shared bulk stamp, never-edited record) so all
+  three start-date paths are previewable in demo mode.
+
+### Sheets sync — rewritten to the real `vlesslist` A–F format
+
+- **The v0.2.1 sync was broken two ways:** (1) it wrote the wrong
+  columns (Name / Inbound / Status / Used GB / Quota GB / Used % /
+  Expiry / Days left) instead of the sheet's A–F (Name |
+  Subscription URL | Config | Expire Date | Group | Remark);
+  (2) it wrote to a tab called `vlesslist` — but the spreadsheet
+  named `vlesslist` (ID `15XUOcPg0PT6uveYInKtf9NlcZhx9RZPeYMlHOl66cW4`)
+  has exactly ONE tab, named `Sheet1` (verified via the Sheets API
+  2026-11-17), so every v0.2.1 sync would 404. `sheetsTabName` is
+  now `Sheet1`.
+- **Row mapping:** Sub URL =
+  `https://ngylab.cloud-ip.cc:2096/ngylab_sub/<subId>` with the
+  panel's REAL subId (from the per-client record — EiKay's is
+  `8pt4xbd1kpors3rv`, not `EiKay`); Config = the fresh vless://
+  link fetched from that sub URL (base64-decoded; a failed fetch
+  keeps the existing Config cell, never blanks it); Expire Date =
+  the remark end date as ISO yyyy-MM-dd (same end rule as Fix
+  names); Group = the panel group; Remark = the full remark.
+  No-expiry clients write `∞`, matching the live sheet.
+- **Sync behaviour:** the sheet is READ first, existing rows are
+  updated in place (matched by Name, then by the subId in the
+  Subscription URL; the sheet's row order is kept), genuinely new
+  clients are appended, rows for clients no longer in the panel
+  are left untouched and reported — never deleted. One merged PUT
+  of the read-back matrix, never a blind wipe. If any row has
+  content beyond column F, the sync aborts without writing.
+  Ragged rows (Sheets omits trailing empty cells) are padded.
+- **Panel-date safeguard:** when the existing Expire Date cell
+  holds a date that differs from the computed one AND equals the
+  panel expiry's calendar date, the existing cell is kept and
+  reported (live cases: ZZWO 2027-01-16, MTTM 30-10-26 — the
+  sync must not silently regress panel truth). Verified: the new
+  rule reproduces every Expire Date in the live sheet exactly.
+- **Setup path:** the Sheets card now shows the one-time Cloud
+  Console steps on demand ("Show one-time setup steps") as well
+  as after a failed sign-in, and sync errors are surfaced with
+  actionable text (404 = wrong ID/tab, 401/403 = sign in again /
+  share the sheet). The steps live in `sheetsSetupSteps()` in
+  sheets_sync_service.dart; `GoogleSignInService` moved to its
+  own file (`google_sign_in_service.dart`) unchanged.
+- **Demo-mode guard:** `PanelProvider.syncSheets` refuses to sync
+  while demo data is on — syncing sample clients would overwrite
+  the real sheet. (v0.2.1 had no such guard.)
+- Tests: 17 new/rewritten Sheets tests (A–F mapping, in-place
+  update, append, orphans kept, panel-date safeguard, config
+  fetch success/failure, read 404, beyond-column-F abort,
+  ragged rows) with a fake HTTP client — the real spreadsheet is
+  never touched by tests.
+
+### What the app now does vs what NayGyi still has to do himself
+
+- **The app now does:** Fix names for dateless remarks (from
+  panel data); Sheets sync in the real A–F format with in-place
+  update + append + fresh Config links + the panel-date
+  safeguard; demo-mode sync refusal; visible setup steps and
+  helpful sync errors.
+- **NayGyi still has to do himself (one-time Cloud Console
+  setup, the app cannot do it):** (1) in console.cloud.google.com,
+  enable the Google Sheets API in the project that owns the
+  `vlesslist` spreadsheet; (2) create the Android OAuth client ID
+  for package `com.ngy.mistyroutemanager` with SHA-1
+  `2A:F2:AC:97:7F:A8:9D:3C:01:9F:A7:61:BB:63:B4:4D:55:CF:CC:C6`;
+  (3) put `google-services.json` in `android/app/` and rebuild
+  the APK; (4) share the `vlesslist` spreadsheet with the Google
+  account he signs in with, as Editor. Until then, sign-in throws
+  `SheetsSetupNeeded` and the app shows these exact steps.

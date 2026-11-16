@@ -205,6 +205,12 @@ void main() {
 }
 
 void _nameCorrectionTests() {
+  // Timestamps from the real Nov 16 panel JSON (Yangon time).
+  // The bulk stamp is shared by 10 clients and must never be
+  // trusted as a start date.
+  final bulkMs = DateTime(2026, 11, 3, 13, 42).millisecondsSinceEpoch;
+  final bulk = {bulkMs};
+
   group('planNameCorrection', () {
     test('pair stuck to name is fixed to the canonical form', () {
       final r = planNameCorrection('EiKay15.10.26-15.11.26', 0);
@@ -217,33 +223,164 @@ void _nameCorrectionTests() {
       expect(r, isA<NameAlreadyCorrect>());
     });
 
-    test('single-date remark is skipped — start unknown', () {
-      final r = planNameCorrection('MaNwe22.11.26', 0);
-      expect(r, isA<NameSkipped>());
-      expect((r as NameSkipped).reason, contains('start date'));
-    });
-
-    test('single date with underscore is skipped too', () {
-      expect(planNameCorrection('ZZWO_16.2.27', 0), isA<NameSkipped>());
-      expect(planNameCorrection('MAMS11.12.26', 0), isA<NameSkipped>());
-    });
-
-    test('bare name is skipped, with or without a panel expiry', () {
-      final noExpiry = planNameCorrection('MaSandar-1', 0);
-      expect(noExpiry, isA<NameSkipped>());
-      expect((noExpiry as NameSkipped).reason, contains('no dates'));
-      final withExpiry = planNameCorrection(
+    test('bare name + trusted updated_at (MaSandar-1, renewed Nov 15)', () {
+      final r = planNameCorrection(
         'MaSandar-1',
-        DateTime(2027, 2, 15).millisecondsSinceEpoch,
+        DateTime(2027, 2, 15, 23, 59).millisecondsSinceEpoch,
+        updatedAtMs: DateTime(2026, 11, 15, 11, 10).millisecondsSinceEpoch,
+        createdAtMs: DateTime(2026, 10, 14, 10, 2).millisecondsSinceEpoch,
       );
-      expect(withExpiry, isA<NameSkipped>());
-      expect((withExpiry as NameSkipped).reason, contains('start date'));
+      expect(r, isA<NameFixed>());
+      expect(
+        (r as NameFixed).correctedEmail,
+        'MaSandar-1_15.11.26-15.2.27',
+      );
+    });
+
+    test('single date + trusted updated_at (MAMS, edited Nov 11)', () {
+      final r = planNameCorrection(
+        'MAMS11.12.26',
+        DateTime(2026, 12, 11, 23, 59).millisecondsSinceEpoch,
+        updatedAtMs: DateTime(2026, 11, 11, 15, 13).millisecondsSinceEpoch,
+        createdAtMs: DateTime(2026, 9, 29, 13, 40).millisecondsSinceEpoch,
+      );
+      expect(r, isA<NameFixed>());
+      expect((r as NameFixed).correctedEmail, 'MAMS_11.11.26-11.12.26');
+    });
+
+    test('single date + trusted updated_at (KoYeMin, edited Nov 5)', () {
+      final r = planNameCorrection(
+        'KoYeMin_2.12.26',
+        DateTime(2026, 12, 2, 23, 59).millisecondsSinceEpoch,
+        updatedAtMs: DateTime(2026, 11, 5, 10, 52).millisecondsSinceEpoch,
+        createdAtMs: DateTime(2026, 10, 2, 8, 12).millisecondsSinceEpoch,
+      );
+      expect(r, isA<NameFixed>());
+      expect((r as NameFixed).correctedEmail, 'KoYeMin_5.11.26-2.12.26');
+    });
+
+    test('single date + shared bulk stamp falls back to end minus 1 month (MaNwe)', () {
+      final r = planNameCorrection(
+        'MaNwe22.11.26',
+        DateTime(2026, 11, 22, 23, 59).millisecondsSinceEpoch,
+        updatedAtMs: bulkMs,
+        createdAtMs: DateTime(2026, 9, 22, 10, 17).millisecondsSinceEpoch,
+        sharedUpdatedAtMs: bulk,
+      );
+      expect(r, isA<NameFixed>());
+      expect((r as NameFixed).correctedEmail, 'MaNwe_22.10.26-22.11.26');
+    });
+
+    test('single date + bulk stamp (MaMee, MaTheint, MTTM)', () {
+      final maMee = planNameCorrection(
+        'MaMee_3.12.26',
+        DateTime(2026, 12, 3, 23, 59).millisecondsSinceEpoch,
+        updatedAtMs: bulkMs,
+        createdAtMs: DateTime(2026, 9, 3, 14, 39).millisecondsSinceEpoch,
+        sharedUpdatedAtMs: bulk,
+      );
+      expect((maMee as NameFixed).correctedEmail, 'MaMee_3.11.26-3.12.26');
+      final maTheint = planNameCorrection(
+        'MaTheint24.10.26',
+        DateTime(2026, 10, 24).millisecondsSinceEpoch,
+        updatedAtMs: bulkMs,
+        createdAtMs: DateTime(2026, 9, 24, 14, 13).millisecondsSinceEpoch,
+        sharedUpdatedAtMs: bulk,
+      );
+      expect(
+        (maTheint as NameFixed).correctedEmail,
+        'MaTheint_24.9.26-24.10.26',
+      );
+      // MTTM: remark end Oct 29 wins over the panel's Oct 30 00:00
+      // (a 1-day difference is the end+1-day convention).
+      final mttm = planNameCorrection(
+        'MTTM29.10.26',
+        DateTime(2026, 10, 30).millisecondsSinceEpoch,
+        updatedAtMs: bulkMs,
+        createdAtMs: DateTime(2026, 9, 29, 13, 17).millisecondsSinceEpoch,
+        sharedUpdatedAtMs: bulk,
+      );
+      expect((mttm as NameFixed).correctedEmail, 'MTTM_29.9.26-29.10.26');
+    });
+
+    test('never-edited record starts on the creation date (ZZWO)', () {
+      // ZZWO's updated_at is 14 ms after its created_at — never
+      // edited since creation. Panel expiry Jan 16 wins over the
+      // remark's Feb 16 (31 days apart = a stale remark).
+      final created = DateTime(2026, 11, 16, 12, 32).millisecondsSinceEpoch;
+      final r = planNameCorrection(
+        'ZZWO_16.2.27',
+        DateTime(2027, 1, 16, 23, 59).millisecondsSinceEpoch,
+        updatedAtMs: created + 14,
+        createdAtMs: created,
+      );
+      expect(r, isA<NameFixed>());
+      expect((r as NameFixed).correctedEmail, 'ZZWO_16.11.26-16.1.27');
+    });
+
+    test('no expiry and no remark date is skipped (bigsun)', () {
+      final r = planNameCorrection('bigsun', 0);
+      expect(r, isA<NameSkipped>());
+      expect((r as NameSkipped).reason, contains('no dates'));
     });
 
     test('end not after start is skipped', () {
       final r = planNameCorrection('EiKay15.11.26-15.10.26', 0);
       expect(r, isA<NameSkipped>());
       expect((r as NameSkipped).reason, contains('not after'));
+    });
+  });
+
+  group('remarkEndDate', () {
+    test('bare name uses the panel expiry date (not minus 1 day)', () {
+      expect(
+        remarkEndDate(
+          'MaSandar-1',
+          DateTime(2027, 2, 15, 23, 59).millisecondsSinceEpoch,
+        ),
+        DateTime(2027, 2, 15),
+      );
+      // A 00:00 expiry is the same calendar day, not the day before.
+      expect(
+        remarkEndDate(
+          'MaTheint24.10.26',
+          DateTime(2026, 10, 24).millisecondsSinceEpoch,
+        ),
+        DateTime(2026, 10, 24),
+      );
+    });
+
+    test('panel wins only when it differs by more than 1 day', () {
+      // ZZWO: 31 days apart -> panel Jan 16.
+      expect(
+        remarkEndDate(
+          'ZZWO_16.2.27',
+          DateTime(2027, 1, 16, 23, 59).millisecondsSinceEpoch,
+        ),
+        DateTime(2027, 1, 16),
+      );
+      // MTTM: 1 day apart -> remark Oct 29.
+      expect(
+        remarkEndDate(
+          'MTTM29.10.26',
+          DateTime(2026, 10, 30).millisecondsSinceEpoch,
+        ),
+        DateTime(2026, 10, 29),
+      );
+    });
+
+    test('no remark date and no expiry is null', () {
+      expect(remarkEndDate('bigsun', 0), isNull);
+    });
+  });
+
+  group('bulkUpdatedAtValues', () {
+    test('only values occurring more than once, never 0', () {
+      expect(
+        bulkUpdatedAtValues([0, 0, 5, 5, 7, 9, 9, 9]),
+        {5, 9},
+      );
+      expect(bulkUpdatedAtValues([1, 2, 3]), isEmpty);
     });
   });
 }

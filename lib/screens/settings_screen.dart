@@ -9,6 +9,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../services/google_sign_in_service.dart';
 import '../services/panel_provider.dart';
 import '../services/sheets_sync_service.dart';
 
@@ -36,7 +37,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _doMessage;
   bool _doMessageIsError = false;
 
-  final _sheets = SheetsSyncService();
   final _googleSignInService = GoogleSignInService();
   String? _googleAccessToken;
   bool _signingIn = false;
@@ -44,6 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _sheetsMessage;
   bool _sheetsMessageIsError = false;
   String? _sheetsSetupSteps;
+  bool _showSheetsSteps = false;
 
   @override
   void initState() {
@@ -186,10 +187,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _syncing = true;
       _sheetsMessage = null;
     });
-    final (ok, msg) = await _sheets.sync(
+    final (ok, msg) = await widget.provider.syncSheets(
       accessToken: token,
       spreadsheetId: _sheetsIdController.text.trim(),
-      clients: clients,
     );
     if (!mounted) return;
     setState(() {
@@ -339,9 +339,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Writes the client table (panel data) into the '
-                      '`vlesslist` tab of your spreadsheet — dates as '
-                      'ISO yyyy-MM-dd, so Sheets can never misread them.',
+                      'Writes the client table into the `vlesslist` '
+                      'spreadsheet (tab `Sheet1`), columns A–F: Name | '
+                      'Subscription URL | Config | Expire Date | Group | '
+                      'Remark. Existing rows are updated in place, new '
+                      'clients are appended, and rows for clients no '
+                      'longer in the panel are left alone — nothing is '
+                      'ever deleted. Config links are fetched fresh from '
+                      'each sub URL. Demo data is never synced.',
+                    ),
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: () => setState(
+                          () => _showSheetsSteps = !_showSheetsSteps,
+                        ),
+                        child: Text(
+                          _showSheetsSteps
+                              ? 'Hide one-time setup steps'
+                              : 'Show one-time setup steps',
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -403,9 +422,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     ],
-                    if (_sheetsSetupSteps != null) ...[
+                    if (_sheetsSetupSteps != null || _showSheetsSteps) ...[
                       const SizedBox(height: 12),
-                      SelectableText(_sheetsSetupSteps!),
+                      SelectableText(
+                        _sheetsSetupSteps ?? sheetsSetupSteps(),
+                      ),
                     ],
                   ],
                 ),
@@ -507,7 +528,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 24),
             const Center(
               child: Text(
-                'MistyRoute Manager v0.2.1 — write actions, SSH setup, '
+                'MistyRoute Manager v0.2.2 — write actions, SSH setup, '
                 'Sheets sync.\n'
                 'Live data needs the Android app (web cannot reach the '
                 'panel: no CORS headers).',

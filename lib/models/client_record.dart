@@ -46,6 +46,8 @@ class ClientRecord {
     required this.reset,
     this.group = '',
     this.reverse,
+    this.createdAtMs = 0,
+    this.updatedAtMs = 0,
   });
 
   /// Tolerant parse: the GET envelope is `{success, msg, obj}` and
@@ -83,6 +85,8 @@ class ClientRecord {
       reset: (json['reset'] as num?)?.toInt() ?? 0,
       group: (json['group'] as String?) ?? '',
       reverse: json['reverse'] as Map<String, dynamic>?,
+      createdAtMs: (json['created_at'] as num?)?.toInt() ?? 0,
+      updatedAtMs: (json['updated_at'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -118,6 +122,12 @@ class ClientRecord {
   /// VLESS reverse-proxy settings, carried through untouched when the
   /// record has them (unused for this panel's clients).
   final Map<String, dynamic>? reverse;
+
+  /// Panel record timestamps (epoch ms, 0 = not present). Used by
+  /// Fix names (v0.2.2) to derive a start date for dateless
+  /// remarks; never sent back to the panel.
+  final int createdAtMs;
+  final int updatedAtMs;
 
   /// The `model.Client` JSON body for `POST /clients/update/:email`.
   ///

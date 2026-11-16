@@ -34,6 +34,9 @@ class ClientInfo {
     required this.quotaBytes,
     required this.expiryTimeMs,
     this.group = '',
+    this.subId = '',
+    this.createdAtMs = 0,
+    this.updatedAtMs = 0,
   });
 
   factory ClientInfo.fromJson(Map<String, dynamic> json, String inbound) {
@@ -46,6 +49,9 @@ class ClientInfo {
       quotaBytes: (json['total'] as num?)?.toInt() ?? 0,
       expiryTimeMs: (json['expiryTime'] as num?)?.toInt() ?? 0,
       group: (json['group'] as String?) ?? '',
+      subId: (json['subId'] as String?) ?? '',
+      createdAtMs: (json['created_at'] as num?)?.toInt() ?? 0,
+      updatedAtMs: (json['updated_at'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -66,6 +72,18 @@ class ClientInfo {
   /// Panel group label ('' = no group / not loaded yet).
   final String group;
 
+  /// The subscription id from the per-client record ('' = not
+  /// loaded yet). Usually the clean name, but mangled for some
+  /// clients (EiKay -> 8pt4xbd1kpors3rv) — the Sheets sync needs
+  /// the real one, so it is filled in by the record enrichment.
+  final String subId;
+
+  /// Panel record timestamps (epoch ms, 0 = not loaded yet).
+  /// Used by Fix names (v0.2.2) to derive a start date for
+  /// dateless remarks.
+  final int createdAtMs;
+  final int updatedAtMs;
+
   ClientInfo copyWith({
     String? email,
     bool? enabled,
@@ -74,6 +92,9 @@ class ClientInfo {
     int? quotaBytes,
     int? expiryTimeMs,
     String? group,
+    String? subId,
+    int? createdAtMs,
+    int? updatedAtMs,
   }) {
     return ClientInfo(
       email: email ?? this.email,
@@ -84,6 +105,9 @@ class ClientInfo {
       quotaBytes: quotaBytes ?? this.quotaBytes,
       expiryTimeMs: expiryTimeMs ?? this.expiryTimeMs,
       group: group ?? this.group,
+      subId: subId ?? this.subId,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
     );
   }
 

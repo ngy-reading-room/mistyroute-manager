@@ -45,7 +45,7 @@ void main() {
     expect(find.text('Dashboard'), findsOneWidget);
     expect(find.text('Setup'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('v0.2.1'), findsOneWidget);
+    expect(find.text('v0.2.2'), findsOneWidget);
     // Flags row counts (checked before scrolling, while still on screen).
     expect(find.text('≥80% quota (3)'), findsOneWidget);
     expect(find.text('Expiring ≤7d (3)'), findsOneWidget);

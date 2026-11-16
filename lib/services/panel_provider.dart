@@ -6,22 +6,29 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../models/client_record.dart';
 import '../models/panel_models.dart';
 import 'billing.dart';
 import 'client_actions.dart';
 import 'demo_data.dart';
 import 'panel_api.dart';
 import 'settings_service.dart';
+import 'sheets_sync_service.dart';
 
 enum DataMode { demo, live }
 
 class PanelProvider extends ChangeNotifier {
-  PanelProvider({PanelApiService? api, SettingsService? settings})
-      : _api = api ?? PanelApiService(),
-        _settingsService = settings ?? SettingsService();
+  PanelProvider({
+    PanelApiService? api,
+    SettingsService? settings,
+    SheetsSyncService? sheets,
+  })  : _api = api ?? PanelApiService(),
+        _settingsService = settings ?? SettingsService(),
+        _sheets = sheets ?? SheetsSyncService();
 
   final PanelApiService _api;
   final SettingsService _settingsService;
+  final SheetsSyncService _sheets;
 
   PanelSettings settings = const PanelSettings();
   PanelData? data;
@@ -86,7 +93,9 @@ class PanelProvider extends ChangeNotifier {
       // Groups are not in inbounds/list — fill them in from the
       // per-client records in the background, so the list shows
       // immediately and the group chips appear once loaded.
-      unawaited(_enrichGroups(live));
+      // The same records also carry the subId and the
+      // created/updated timestamps Fix names and Sheets sync need.
+      unawaited(_enrichClientDetails(live));
     } on PanelApiException catch (e) {
       error = e.message;
       data = null;
@@ -102,11 +111,12 @@ class PanelProvider extends ChangeNotifier {
 
   int _refreshGen = 0;
 
-  /// Fetch each client's group (`GET clients/get/:email`) in
-  /// parallel and attach it to the dashboard data. Best-effort:
-  /// a failed lookup leaves that client ungrouped (''). A newer
+  /// Fetch each client's group, subId and record timestamps
+  /// (`GET clients/get/:email`) in parallel and attach them to the
+  /// dashboard data. Best-effort: a failed lookup leaves that
+  /// client ungrouped ('') with no subId/timestamps. A newer
   /// refresh supersedes an in-flight enrichment.
-  Future<void> _enrichGroups(PanelData live) async {
+  Future<void> _enrichClientDetails(PanelData live) async {
     final gen = ++_refreshGen;
     final enriched = await Future.wait(
       live.clients.map((c) async {
@@ -116,7 +126,12 @@ class PanelProvider extends ChangeNotifier {
             token: _token,
             email: c.email,
           );
-          return c.copyWith(group: record.group);
+          return c.copyWith(
+            group: record.group,
+            subId: record.subId,
+            createdAtMs: record.createdAtMs,
+            updatedAtMs: record.updatedAtMs,
+          );
         } on Exception {
           return c;
         }
@@ -125,6 +140,72 @@ class PanelProvider extends ChangeNotifier {
     if (gen != _refreshGen) return;
     data = live.copyWith(clients: enriched);
     notifyListeners();
+  }
+
+  /// The updated_at values shared by more than one loaded client
+  /// (the panel's bulk stamp) — Fix names must never trust them
+  /// as a start date. Values of 0 (not loaded) never count.
+  Set<int> _sharedUpdatedAtValues() =>
+      bulkUpdatedAtValues(data?.clients.map((c) => c.updatedAtMs) ?? []);
+
+  /// Fetch per-client records for the clients whose subId is still
+  /// unknown (needed by Sheets sync for the subscription URL).
+  /// Best-effort: failures leave the subId empty and the sync
+  /// keeps the sheet's existing URL for that row.
+  Future<void> _ensureSubIds() async {
+    final live = data;
+    if (live == null || showingDemo) return;
+    final missing = live.clients.where((c) => c.subId.isEmpty).toList();
+    if (missing.isEmpty) return;
+    final enriched = await Future.wait(
+      live.clients.map((c) async {
+        if (c.subId.isNotEmpty) return c;
+        try {
+          final record = await _api.fetchClientRecord(
+            baseUrl: _baseUrl,
+            token: _token,
+            email: c.email,
+          );
+          return c.copyWith(
+            group: c.group.isEmpty ? record.group : c.group,
+            subId: record.subId,
+            createdAtMs: record.createdAtMs,
+            updatedAtMs: record.updatedAtMs,
+          );
+        } on Exception {
+          return c;
+        }
+      }),
+    );
+    data = live.copyWith(clients: enriched);
+    notifyListeners();
+  }
+
+  /// Sync the loaded clients to the `vlesslist` spreadsheet
+  /// (see SheetsSyncService). Demo mode is refused outright:
+  /// syncing sample clients would overwrite the real sheet.
+  /// Returns (ok, message) for the Settings screen to show.
+  Future<(bool, String)> syncSheets({
+    required String accessToken,
+    required String spreadsheetId,
+  }) async {
+    if (showingDemo) {
+      return (
+        false,
+        'Demo data is on — turn it off in Settings first, so the '
+            'real sheet is never overwritten with sample clients.',
+      );
+    }
+    final clients = data?.clients ?? [];
+    if (clients.isEmpty) {
+      return (false, 'No clients to sync — load the dashboard first.');
+    }
+    await _ensureSubIds();
+    return _sheets.sync(
+      accessToken: accessToken,
+      spreadsheetId: spreadsheetId,
+      clients: data?.clients ?? clients,
+    );
   }
 
   Future<void> saveSettings(PanelSettings next) async {
@@ -462,12 +543,17 @@ class PanelProvider extends ChangeNotifier {
     return inbounds.first;
   }
 
-  // ---- Fix names (v0.2.1) ----
+  // ---- Fix names (v0.2.1, dateless remarks added in v0.2.2) ----
   //
   // One tap, no preview: each fixable remark is corrected from
   // existing data only (see planNameCorrection), subId and UUID are
   // untouched (updates go through the fetched record), and the
   // result lists what changed and what was skipped with reasons.
+  // The plan uses the client's record timestamps (filled in by the
+  // background enrichment); when they are not loaded yet, the
+  // record is fetched once and the plan is re-derived from it
+  // before the update, so a fix is never skipped just because the
+  // enrichment had not finished.
 
   /// Fix one client's name. Returns the correction outcome.
   Future<NameCorrection> fixClientName(ClientInfo client) async {
@@ -495,9 +581,49 @@ class PanelProvider extends ChangeNotifier {
     return results;
   }
 
+  /// Plan a fix from the given record timestamps.
+  NameCorrection _planFor(
+    ClientInfo client,
+    int updatedAtMs,
+    int createdAtMs,
+  ) =>
+      planNameCorrection(
+        client.email,
+        client.expiryTimeMs,
+        updatedAtMs: updatedAtMs,
+        createdAtMs: createdAtMs,
+        sharedUpdatedAtMs: _sharedUpdatedAtValues(),
+      );
+
   /// Apply one planned fix (no refresh — the caller refreshes once).
+  ///
+  /// For a remark with no start of its own, the start date comes
+  /// from the record timestamps — so when they are not loaded yet
+  /// (enrichment still running), the record is fetched first and
+  /// the plan is derived from it. Planning from the 1-month
+  /// fallback without checking the record first could pick the
+  /// wrong start (MaSandar's trusted Nov 15 vs the Jan 15
+  /// fallback). Pair remarks need no record: their dates are in
+  /// the remark itself.
   Future<NameCorrection> _applyNameFix(ClientInfo client) async {
-    final plan = planNameCorrection(client.email, client.expiryTimeMs);
+    ClientRecord? record;
+    var plan = _planFor(client, client.updatedAtMs, client.createdAtMs);
+    final needsRecord = !showingDemo &&
+        parseRemark(client.email).start == null &&
+        client.updatedAtMs == 0 &&
+        client.createdAtMs == 0;
+    if (needsRecord) {
+      try {
+        record = await _api.fetchClientRecord(
+          baseUrl: _baseUrl,
+          token: _token,
+          email: client.email,
+        );
+        plan = _planFor(client, record.updatedAtMs, record.createdAtMs);
+      } on Exception {
+        // Keep the first plan; the panel is unreachable.
+      }
+    }
     if (plan is! NameFixed) return plan;
     if (showingDemo) {
       _simulate(_replaced(
@@ -507,7 +633,7 @@ class PanelProvider extends ChangeNotifier {
       return plan;
     }
     try {
-      final record = await _api.fetchClientRecord(
+      record ??= await _api.fetchClientRecord(
         baseUrl: _baseUrl,
         token: _token,
         email: client.email,

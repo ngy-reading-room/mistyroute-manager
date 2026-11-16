@@ -21,12 +21,15 @@ ClientInfo _c({
   required int daysToExpiry, // huge number = effectively no expiry
   bool enabled = true,
   String group = '',
+  int? createdAtMs,
+  int? updatedAtMs,
 }) {
   final expiryMs = daysToExpiry > 9000
       ? 0
       : DateTime.now()
           .add(Duration(days: daysToExpiry))
           .millisecondsSinceEpoch;
+  final now = DateTime.now();
   return ClientInfo(
     email: name,
     inbound: 'VLESS Reality',
@@ -36,17 +39,44 @@ ClientInfo _c({
     quotaBytes: _gb(quotaGb),
     expiryTimeMs: expiryMs,
     group: group,
+    subId: name,
+    // Record timestamps mirror the real panel (v0.2.2): by
+    // default created 45 days ago, last edited 7 days ago
+    // (unique per client). Overrides below exercise the other
+    // Fix-names paths — a shared bulk stamp and a never-edited
+    // record — so demo mode previews all of them.
+    createdAtMs: createdAtMs ??
+        now.subtract(const Duration(days: 45)).millisecondsSinceEpoch,
+    updatedAtMs: updatedAtMs ??
+        now.subtract(const Duration(days: 7)).millisecondsSinceEpoch,
   );
 }
+
+/// One shared updated_at value (the demo equivalent of the panel's
+/// Nov 3 bulk stamp): two clients share it, so Fix names must
+/// never trust it as a start date.
+final _bulkStampMs = DateTime.now()
+    .subtract(const Duration(days: 14))
+    .millisecondsSinceEpoch;
 
 PanelData buildDemoData() {
   final clients = <ClientInfo>[
     // Over 80% quota (3).
-    _c(name: 'Demo User 01', upGb: 12.4, downGb: 46.0, quotaGb: 60, daysToExpiry: 24, group: 'MNA'),
-    _c(name: 'Demo User 02', upGb: 9.1, downGb: 79.3, quotaGb: 100, daysToExpiry: 41, group: 'MayZin'),
-    _c(name: 'Demo User 03', upGb: 4.2, downGb: 50.9, quotaGb: 67.5, daysToExpiry: 9, group: 'MayZin'),
+    // 01: trusted last edit 5 days ago -> Fix names starts there.
+    _c(name: 'Demo User 01', upGb: 12.4, downGb: 46.0, quotaGb: 60, daysToExpiry: 24, group: 'MNA',
+        updatedAtMs: DateTime.now().subtract(const Duration(days: 5)).millisecondsSinceEpoch),
+    // 02 + 03 share the bulk stamp -> Fix names falls back to
+    // end minus 1 month for both.
+    _c(name: 'Demo User 02', upGb: 9.1, downGb: 79.3, quotaGb: 100, daysToExpiry: 41, group: 'MayZin',
+        updatedAtMs: _bulkStampMs),
+    _c(name: 'Demo User 03', upGb: 4.2, downGb: 50.9, quotaGb: 67.5, daysToExpiry: 9, group: 'MayZin',
+        updatedAtMs: _bulkStampMs),
     // Expiring within 7 days (3).
-    _c(name: 'Demo User 04', upGb: 3.0, downGb: 11.5, quotaGb: 50, daysToExpiry: 2, group: 'MNA'),
+    // 04: never edited since creation -> Fix names starts on the
+    // creation date.
+    _c(name: 'Demo User 04', upGb: 3.0, downGb: 11.5, quotaGb: 50, daysToExpiry: 2, group: 'MNA',
+        createdAtMs: DateTime.now().subtract(const Duration(days: 30)).millisecondsSinceEpoch,
+        updatedAtMs: DateTime.now().subtract(const Duration(days: 30)).millisecondsSinceEpoch),
     _c(name: 'Demo User 05', upGb: 6.8, downGb: 22.1, quotaGb: 60, daysToExpiry: 5, group: 'Friends'),
     _c(name: 'Demo User 06', upGb: 1.1, downGb: 5.4, quotaGb: 100, daysToExpiry: 7, group: 'MayZin'),
     // Already expired (1).
