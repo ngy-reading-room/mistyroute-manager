@@ -539,3 +539,41 @@ and against the live `vlesslist` sheet (read 2026-11-17):
   the APK; (4) share the `vlesslist` spreadsheet with the Google
   account he signs in with, as Editor. Until then, sign-in throws
   `SheetsSetupNeeded` and the app shows these exact steps.
+
+### Delivery (v0.2.2, verified 2026-11-17)
+- Gates: `flutter analyze` clean; `flutter test` **70 passed**
+  (was 53 in v0.2.1 — 17 new/rewritten: Fix-names date derivation
+  for the exact real-panel cases, Sheets A–F mapping / in-place
+  merge / append / safeguard / ragged rows).
+- APK: `MistyRoute_Manager-v0.2.2.apk`, 58,881,490 bytes,
+  versionCode 4 / versionName 0.2.2, package
+  `com.ngy.mistyroutemanager`, label "MistyRoute Manager",
+  md5 `3c82488ff7a2134aa30ceb59beccdfa8`, apksigner verified
+  (v2 scheme), signer SHA-1
+  `2A:F2:AC:97:7F:A8:9D:3C:01:9F:A7:61:BB:63:B4:4D:55:CF:CC:C6`
+  (keystore SHA-256 matches the APK signer cert) — same keystore
+  as v0.2.0/v0.2.1, so an update install keeps the existing VPS
+  SSH key working. Build took 444.8s.
+- Drive: same AppDev folder as v0.2.0/v0.2.1, file id
+  `1Eo-xKDUhpvILlmBoENBWzfeMOS76jqTk`, read back from Drive:
+  name/size/md5 all match local.
+- Web demo: https://ngy-reading-room.github.io/mistyroute-manager/
+  (gh-pages commit `f1b4fec`, source commit `14a050b`), served
+  `main.dart.js` md5 `8e2f555990bf52dfbac6c238a8d1ff5b` — identical
+  to the local build (rebuilt deterministically: two builds gave
+  the same md5), index HTTP 200. No Netlify credits used.
+- Deploy lesson (2026-11-17): the first gh-pages deploy attempt
+  DELETED the whole local `build/` directory (including the APK
+  copy — the Drive upload had already succeeded, so nothing was
+  lost). Cause: `rsync -a --delete build/web/ ./` with the source
+  nested INSIDE the destination — rsync's --delete removed `build/`
+  from the destination while the transfer was reading it ("file
+  has vanished"). NEVER rsync a build output into its own parent
+  with --delete. The working method: `git worktree add
+  /tmp/mrm-ghpages gh-pages`, rsync into the worktree, commit +
+  push there, `git worktree remove`. The web build was then
+  rebuilt (same md5) and deployed that way.
+- NOT yet done: live-browser render check of the web demo
+  (subagent has no live browser — parent to arrange) and NayGyi's
+  phone test of the APK (install as an UPDATE over v0.2.1, test
+  writes on a test client first, then Fix names + Sheets sync).
