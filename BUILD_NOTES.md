@@ -577,3 +577,82 @@ and against the live `vlesslist` sheet (read 2026-11-17):
   (subagent has no live browser — parent to arrange) and NayGyi's
   phone test of the APK (install as an UPDATE over v0.2.1, test
   writes on a test client first, then Fix names + Sheets sync).
+
+## v0.2.3+5 (2026-11-18) — Per-client copyable links (Sub URL + vless link)
+
+NayGyi: "client တွေမှာထည့်သုံးလို့ရတဲ့ sub url ဖြစ်ရင်ရပြီ" — any
+sub URL the clients can use is fine, wherever it comes from.
+Gates: `flutter analyze` clean; `flutter test` **82 passed**
+(was 70 in v0.2.2 — 12 new: sub-URL building, shared config
+fetch/decode, demo-mode guard, Links-card widget test).
+
+### What changed — Links card on the client detail screen
+
+- New **Links** card (between the details card and Actions):
+  **Subscription URL** as selectable text + a **Copy** button, and
+  the **vless:// link** + a **Copy** button. Copy uses
+  `Clipboard.setData` plus a SnackBar confirmation
+  ("Subscription URL copied." / "VLESS link copied.").
+- **Sub URL is always the ngylab.cloud-ip.cc:2096 form**
+  (`https://ngylab.cloud-ip.cc:2096/ngylab_sub/<subId>`) — never
+  the trycloudflare tunnel hostname (grep-verified: 0
+  `trycloudflare` occurrences in the built web JS).
+- **Shared code, no duplication:** the detail screen reuses
+  `subUrlFor(subId)` and `SheetsSyncService.fetchFreshConfig`
+  (fetch + base64-decode) from sheets_sync_service.dart — the
+  same path Sheets sync uses. New shared helper
+  `subIdForClient(client)` (record subId, else the clean remark
+  name); the sync loop now calls it too.
+- **VLESS link is fetched on demand** when the detail screen
+  opens (live mode), via a new `PanelProvider.fetchClientConfig`
+  that delegates to the shared fetch. Loading state
+  ("Fetching VLESS link…"); on failure a clear message +
+  **Retry** button (the fetch returns null on any failure, so a
+  failed fetch never blanks or crashes anything).
+- **Demo mode:** the Sub URL copies fine from the demo subId.
+  The vless link is NEVER fetched live from demo data —
+  `fetchClientConfig` returns null without any HTTP call
+  (unit-tested with a throwing fake client). Instead the card
+  shows a clearly-marked **sample link** (`sampleVlessLink`:
+  zero UUID, host `demo.invalid`, `#Demo-<name>` fragment,
+  labelled "VLESS link (sample — demo mode)") with a note
+  explaining it is not real.
+
+### Delivery (v0.2.3, verified 2026-11-18)
+- Gates: `flutter analyze` clean; `flutter test` **82 passed**.
+- APK: `MistyRoute_Manager-v0.2.3.apk`, 58,963,498 bytes,
+  versionCode 5 / versionName 0.2.3, package
+  `com.ngy.mistyroutemanager`, label "MistyRoute Manager",
+  md5 `c0e30121051717f5567af1131bdace7e`, apksigner verified,
+  signer SHA-1
+  `2A:F2:AC:97:7F:A8:9D:3C:01:9F:A7:61:BB:63:B4:4D:55:CF:CC:C6`
+  — same keystore as v0.2.0–v0.2.2, so an update install keeps
+  the existing VPS SSH key working. Build took 567.3s.
+- Drive: same AppDev folder as v0.2.0–v0.2.2, file id
+  `1tVlI-qDrSEAA5q64fY0oRW_bp1yyV5Mj`, read back from Drive:
+  name/size/md5 all match local.
+- Web demo: https://ngy-reading-room.github.io/mistyroute-manager/
+  (gh-pages commit `12d2ed7`, source commit `5b19f38`), served
+  `main.dart.js` md5 `e9969b848e6a312b2bc0b12d4083e5d5` — identical
+  to the local build, index HTTP 200. No Netlify credits used.
+- Deploy lesson (2026-11-18, new): `rsync -a --delete` into a
+  git worktree DELETES the worktree's `.git` file (it is not in
+  the source), breaking the worktree ("not a git repository").
+  Always rsync with `--exclude=.git` into a worktree. (The
+  v0.2.2 lesson — never rsync a build output into its own
+  parent — still stands.)
+- NOT yet done: live-browser render check of the web demo
+  (subagent has no live browser — parent to arrange) and NayGyi's
+  phone test of the APK (install as an UPDATE over v0.2.2, never
+  uninstall).
+
+## Planned — STILL ON HOLD (NayGyi, 2026-11-17): DO NOT BUILD YET
+
+Whole-node / single / batch traffic reset (v0.2.3 was approved
+for the Links feature ONLY — the reset feature stays for a later
+version):
+- Reset a whole node/inbound — all clients' traffic in one go.
+- Single-client reset — already exists (detail screen).
+- Batch reset — select multiple clients, reset their traffic together.
+
+Also still open: monthly month-end reset reminder (one-time Nov 30 18:07 reminder exists; recurring not approved yet).
