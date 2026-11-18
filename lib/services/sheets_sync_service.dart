@@ -75,6 +75,23 @@ String? subIdFromUrl(String url) {
   return rest.isEmpty ? null : rest;
 }
 
+/// The subId to use for a client: the panel record's real subId
+/// when loaded, otherwise the clean name from the remark (the
+/// same fallback Sheets sync uses).
+String subIdForClient(ClientInfo client) =>
+    client.subId.isNotEmpty ? client.subId : parseRemark(client.email).name;
+
+/// A clearly-marked sample vless:// link for demo mode — never a
+/// real link (host demo.invalid, zero UUID, "Demo-" fragment), so
+/// the Links card can be previewed without a live panel fetch.
+String sampleVlessLink(ClientInfo client) {
+  final name = parseRemark(client.email).name;
+  return 'vless://00000000-0000-0000-0000-000000000000@demo.invalid:443'
+      '?encryption=none&security=reality&sni=demo.invalid&fp=chrome'
+      '&pbk=demo&sid=demo&spx=%2Fdemo&type=tcp'
+      '&flow=xtls-rprx-vision#Demo-$name';
+}
+
 /// `2026-11-15` — ISO, zero-padded, so Sheets can never misread it
 /// as a US M-D-Y date.
 String formatIsoDate(DateTime d) =>
@@ -400,8 +417,7 @@ class SheetsSyncService {
       final configFailures = <String>[];
       await Future.wait(
         clients.map((c) async {
-          final subId =
-              c.subId.isNotEmpty ? c.subId : parseRemark(c.email).name;
+          final subId = subIdForClient(c);
           final link = await fetchFreshConfig(subId);
           if (link != null) {
             freshConfigs[c.email] = link;

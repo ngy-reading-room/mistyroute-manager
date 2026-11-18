@@ -1,16 +1,24 @@
 /// Full details for one client, with the v0.2 write actions:
 /// renew, extend quota x1.35, reset traffic, enable/disable, delete.
 ///
+/// The Links card (v0.2.3) shows the client's Subscription URL
+/// (built from the panel's real subId, ngylab.cloud-ip.cc:2096
+/// form) and the fresh vless:// link fetched from that sub URL —
+/// both copyable. In demo mode the vless link is a clearly-marked
+/// sample link; no live fetch is ever attempted from demo data.
+///
 /// In demo mode the actions apply to the sample data and say so;
 /// in live mode they call the panel API (update actions first GET the
 /// client record so the UUID is preserved).
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/panel_models.dart';
 import '../services/client_actions.dart';
 import '../services/panel_provider.dart';
+import '../services/sheets_sync_service.dart';
 import '../utils/format.dart';
 
 class ClientDetailScreen extends StatefulWidget {
@@ -29,6 +37,49 @@ class ClientDetailScreen extends StatefulWidget {
 
 class _ClientDetailScreenState extends State<ClientDetailScreen> {
   bool _busy = false;
+
+  /// The fetched vless:// link (live mode), or the sample link
+  /// (demo mode). Null while loading or when the fetch failed.
+  String? _vlessLink;
+  bool _vlessLoading = false;
+  bool _vlessFailed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.provider.showingDemo) {
+      // No live fetch from demo data — show the sample link.
+      _vlessLink = sampleVlessLink(widget.client);
+    } else {
+      _fetchVless();
+    }
+  }
+
+  /// Fetch the fresh vless:// link on demand (live mode only).
+  Future<void> _fetchVless() async {
+    setState(() {
+      _vlessLoading = true;
+      _vlessFailed = false;
+    });
+    final link = await widget.provider.fetchClientConfig(_client);
+    if (!mounted) return;
+    setState(() {
+      _vlessLoading = false;
+      if (link == null) {
+        _vlessFailed = true;
+      } else {
+        _vlessLink = link;
+      }
+    });
+  }
+
+  Future<void> _copy(String text, String label) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label copied.')),
+    );
+  }
 
   ClientInfo get _client {
     // Re-read from the provider so the screen reflects the latest
@@ -305,6 +356,76 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
+                    'Links',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  _LinkRow(
+                    label: 'Subscription URL',
+                    value: subUrlFor(subIdForClient(c)),
+                    onCopy: () => _copy(
+                      subUrlFor(subIdForClient(c)),
+                      'Subscription URL',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (widget.provider.showingDemo) ...[
+                    _LinkRow(
+                      label: 'VLESS link (sample — demo mode)',
+                      value: _vlessLink ?? sampleVlessLink(c),
+                      onCopy: () => _copy(
+                        _vlessLink ?? sampleVlessLink(c),
+                        'Sample VLESS link',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Demo mode: this is a sample link, not a real '
+                      'one. On the phone with live data, the real '
+                      'link is fetched from the panel here.',
+                    ),
+                  ] else if (_vlessLoading) ...[
+                    const Row(
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 12),
+                        Text('Fetching VLESS link…'),
+                      ],
+                    ),
+                  ] else if (_vlessFailed) ...[
+                    const Text(
+                      'Could not fetch the VLESS link — check the '
+                      'panel is reachable and try again.',
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton.tonalIcon(
+                      onPressed: _fetchVless,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                    ),
+                  ] else if (_vlessLink != null) ...[
+                    _LinkRow(
+                      label: 'VLESS link',
+                      value: _vlessLink!,
+                      onCopy: () => _copy(_vlessLink!, 'VLESS link'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
                     'Actions',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
@@ -399,6 +520,53 @@ class _Row extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// One copyable link: a label + Copy button above the selectable
+/// link text (long URLs wrap; the user can also long-press to
+/// select part of it).
+class _LinkRow extends StatelessWidget {
+  const _LinkRow({
+    required this.label,
+    required this.value,
+    required this.onCopy,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: onCopy,
+              icon: const Icon(Icons.copy, size: 18),
+              label: const Text('Copy'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        SelectableText(
+          value,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
     );
   }
 }

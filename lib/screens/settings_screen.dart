@@ -528,7 +528,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 24),
             const Center(
               child: Text(
-                'MistyRoute Manager v0.2.2 — write actions, SSH setup, '
+                'MistyRoute Manager v0.2.3 — write actions, SSH setup, '
                 'Sheets sync.\n'
                 'Live data needs the Android app (web cannot reach the '
                 'panel: no CORS headers).',

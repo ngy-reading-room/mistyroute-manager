@@ -208,6 +208,15 @@ class PanelProvider extends ChangeNotifier {
     );
   }
 
+  /// Fetch the fresh vless:// link for one client from its
+  /// subscription URL (the same shared path Sheets sync uses).
+  /// Returns null in demo mode — no live fetch is ever attempted
+  /// against the real panel from sample data — or on any failure.
+  Future<String?> fetchClientConfig(ClientInfo client) async {
+    if (showingDemo) return null;
+    return _sheets.fetchFreshConfig(subIdForClient(client));
+  }
+
   Future<void> saveSettings(PanelSettings next) async {
     settings = next;
     await _settingsService.save(next);

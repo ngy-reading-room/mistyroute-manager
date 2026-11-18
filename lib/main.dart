@@ -1,4 +1,4 @@
-/// MistyRoute Manager v0.2.2 — 3x-ui panel management.
+/// MistyRoute Manager v0.2.3 — 3x-ui panel management.
 ///
 /// Dashboard (bandwidth monitor + user list + write actions), Setup
 /// (SSH one-tap tunnel actions, mobile only) and Settings (panel URL +
@@ -68,7 +68,7 @@ class _MainScreenState extends State<MainScreen> {
               return const Padding(
                 padding: EdgeInsets.only(right: 12),
                 child: Center(
-                  child: Text('v0.2.2'),
+                  child: Text('v0.2.3'),
                 ),
               );
             },
